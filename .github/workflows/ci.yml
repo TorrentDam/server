@@ -1,0 +1,37 @@
+name: CI
+
+on: [push]
+
+jobs:
+
+  server:
+    runs-on: ubuntu-latest
+    steps:
+
+    - uses: actions/checkout@v1
+
+    - uses: actions/cache@v1
+      with:
+        path: ~/.cache/coursier/v1
+        key: ${{ runner.os }}-coursier-${{ hashFiles('**/build.sc') }}
+
+    - uses: olafurpg/setup-scala@v10
+      with:
+        java-version: graalvm-ce-java11@20.1.0
+
+    - name: Build jar
+      run: ./mill server.assembly
+
+    - name: Build binary (GraalVM native-image)
+      run: |
+        gu install native-image
+        ./mill server.nativeImage
+
+    - name: Deploy server
+      run: |
+        curl https://cli-assets.heroku.com/install.sh | sh
+        heroku container:login
+        heroku container:push --app bittorrent-server web
+        heroku container:release --app bittorrent-server web
+      env:
+        HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}

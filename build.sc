@@ -1,11 +1,12 @@
-import $ivy.`com.lihaoyi::mill-contrib-bintray:$MILL_VERSION`
+import $ivy.`com.lihaoyi::mill-contrib-artifactory:$MILL_VERSION`
 
 import mill._
 import scalalib._
 import scalafmt.ScalafmtModule
 import mill.eval.Result
 import coursier.maven.MavenRepository
-import mill.contrib.bintray.{BintrayPublishData, BintrayPublishModule}
+import mill.contrib.artifactory.ArtifactoryPublishModule
+
 
 object protocol extends Module with Publishing {
   def ivyDeps = Agg(
@@ -96,11 +97,12 @@ trait NativeImageModule extends ScalaModule {
   }
 }
 
-trait Publishing extends BintrayPublishModule {
+trait Publishing extends ArtifactoryPublishModule {
   import mill.scalalib.publish._
 
-  def bintrayOwner = "lavrov"
-  def bintrayRepo = "maven"
+  def artifactoryUri  = "https://maven.pkg.github.com/TorrentDam/server"
+
+  def artifactorySnapshotUri = ""
 
   def pomSettings = PomSettings(
     description = "Server for TorrentDam",
@@ -112,11 +114,6 @@ trait Publishing extends BintrayPublishModule {
       Developer("lavrov", "Vitaly Lavrov","https://github.com/lavrov")
     )
   )
-
-  override def bintrayPublishArtifacts: T[BintrayPublishData] = T {
-    val original = super.bintrayPublishArtifacts()
-    original.copy(payload = original.payload.filterNot(_._2.contains("javadoc")))
-  }
 
   def publishVersion = "0.3.0"
 }

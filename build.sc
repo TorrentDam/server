@@ -57,7 +57,7 @@ trait Module extends ScalaModule with ScalafmtModule {
 }
 
 trait JsModule extends Module with scalajslib.ScalaJSModule {
-  def scalaJSVersion = "1.2.0"
+  def scalaJSVersion = "1.5.0"
   import mill.scalajslib.api.ModuleKind
   def moduleKind = ModuleKind.CommonJSModule
 }
@@ -115,7 +115,7 @@ trait Publishing extends ArtifactoryPublishModule {
     )
   )
 
-  def publishVersion = "0.3.0"
+  def publishVersion = "0.5.0"
 }
 
 object Versions {

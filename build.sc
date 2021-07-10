@@ -35,7 +35,7 @@ object server extends Module with NativeImageModule {
 
 trait Module extends ScalaModule with ScalafmtModule {
   def scalaVersion = "2.13.4"
-  def scalacOptions = List(
+  def scalacOptions = Seq(
     "-language:higherKinds",
     "-Ymacro-annotations",
   )

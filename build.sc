@@ -111,7 +111,7 @@ trait Publishing extends ArtifactoryPublishModule {
     organization = "com.github.torrentdam",
     url = "https://github.com/TorrentDam/server",
     licenses = Seq(License.MIT),
-    versionControl = VersionControl.github("TorrentDam", "derver"),
+    versionControl = VersionControl.github("TorrentDam", "server"),
     developers = Seq(
       Developer("lavrov", "Vitaly Lavrov","https://github.com/lavrov")
     )

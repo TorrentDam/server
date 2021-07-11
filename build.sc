@@ -39,9 +39,16 @@ trait Module extends ScalaModule with ScalafmtModule {
     "-language:higherKinds",
     "-Ymacro-annotations",
   )
-  def repositories = super.repositories ++ Seq(
-      MavenRepository("https://dl.bintray.com/lavrov/maven")
-  )
+  def repositoriesTask = T.task {
+    super.repositoriesTask() ++ Seq(
+      MavenRepository(
+        "https://maven.pkg.github.com/TorrentDam/bencode",
+        T.env.get("GITHUB_TOKEN").map { token =>
+          coursier.core.Authentication("lavrov", token)
+        }
+      )
+    )
+  }
   def scalacPluginIvyDeps = Agg(
     ivy"org.typelevel:::kind-projector:0.11.1",
     ivy"com.olegpy::better-monadic-for:0.3.1",

@@ -1,9 +1,9 @@
-import cats.effect.{ContextShift, IO, Resource, Timer}
-import cats.effect.concurrent.Ref
-import cats.syntax.all._
-import logstage.LogIO
+import cats.effect.{IO, Resource}
+import cats.effect.kernel.Ref
+import cats.syntax.all.*
+import org.typelevel.log4cats.Logger
 
-import scala.concurrent.duration._
+import scala.concurrent.duration.*
 import scala.util.chaining.scalaUtilChainingOps
 
 trait TorrentIndex {
@@ -14,7 +14,7 @@ trait TorrentIndex {
 
 object TorrentIndex {
 
-  def apply()(implicit timer: Timer[IO], cs: ContextShift[IO], logger: LogIO[IO]): Resource[IO, TorrentIndex] = {
+  def apply()(implicit logger: Logger[IO]): Resource[IO, TorrentIndex] = {
 
     val ref = Ref.unsafe[IO, Index](Index())
 
@@ -47,7 +47,7 @@ object TorrentIndex {
     }
   }
 
-  private def refresh(ref: Ref[IO, Index])(implicit timer: Timer[IO], logger: LogIO[IO]): IO[Nothing] = {
+  private def refresh(ref: Ref[IO, Index])(implicit logger: Logger[IO]): IO[Nothing] = {
     IO { requests.get("https://raw.githubusercontent.com/TorrentDam/torrents/master/index/index.json") }
       .map { response =>
         upickle.default.read[List[Entry]](response.bytes)

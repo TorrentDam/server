@@ -3,7 +3,7 @@ import $ivy.`com.lihaoyi::mill-contrib-artifactory:$MILL_VERSION`
 import mill._
 import scalalib._
 import scalafmt.ScalafmtModule
-import mill.eval.Result
+import mill.api.Result
 import coursier.maven.MavenRepository
 import mill.contrib.artifactory.ArtifactoryPublishModule
 
@@ -25,19 +25,20 @@ object server extends Module with NativeImageModule {
   def moduleDeps = List(protocol)
   def ivyDeps = Agg(
     Deps.bittorrent,
-    ivy"org.http4s::http4s-core:${Versions.http4s}",
-    ivy"org.http4s::http4s-dsl:${Versions.http4s}",
-    ivy"org.http4s::http4s-blaze-server:${Versions.http4s}",
-    ivy"io.7mind.izumi::logstage-adapter-slf4j:${Versions.logstage}",
-    ivy"com.lihaoyi::requests:${Versions.requests}",
+    Deps.http4s.core,
+    Deps.http4s.dsl,
+    Deps.http4s.server,
+    Deps.log4cats,
+    Deps.`logback-classic`,
+    Deps.requests,
   )
 }
 
 trait Module extends ScalaModule with ScalafmtModule {
-  def scalaVersion = "2.13.4"
+  def scalaVersion = "3.0.1"
   def scalacOptions = Seq(
-    "-language:higherKinds",
-    "-Ymacro-annotations",
+    "-source:future",
+    "-Ykind-projector:underscores",
   )
   def repositoriesTask = T.task {
     super.repositoriesTask() ++ Seq(
@@ -49,22 +50,15 @@ trait Module extends ScalaModule with ScalafmtModule {
       )
     )
   }
-  def scalacPluginIvyDeps = Agg(
-    ivy"org.typelevel:::kind-projector:0.11.1",
-    ivy"com.olegpy::better-monadic-for:0.3.1",
-  )
-  trait TestModule extends Tests {
+  trait TestModule extends Tests with mill.scalalib.TestModule.Munit {
     def ivyDeps = Agg(
-      ivy"org.scalameta::munit:0.7.12",
-    )
-    def testFrameworks = Seq(
-      "munit.Framework"
+      Deps.`munit-cats-effect`
     )
   }
 }
 
 trait JsModule extends Module with scalajslib.ScalaJSModule {
-  def scalaJSVersion = "1.5.0"
+  def scalaJSVersion = "1.6.0"
   import mill.scalajslib.api.ModuleKind
   def moduleKind = ModuleKind.CommonJSModule
 }
@@ -125,24 +119,37 @@ trait Publishing extends ArtifactoryPublishModule {
   def publishVersion = "0.5.0"
 }
 
-object Versions {
-  val `cats-effect` = "2.2.0"
-  val logstage = "1.0.0-M1"
-  val `scodec-bits` = "1.1.14"
-  val upickle = "1.0.0"
-  val http4s = "0.21.11"
-  val requests = "0.5.1"
-}
-
 object Deps {
 
-  val common = ivy"com.github.torrentdam::common::0.3.0"
-  val bittorrent = ivy"com.github.torrentdam::bittorrent::0.3.0"
+  val common = ivy"com.github.torrentdam::common::${Versions.bittorrent}"
+  val bittorrent = ivy"com.github.torrentdam::bittorrent::${Versions.bittorrent}"
 
   val `scodec-bits` = ivy"org.scodec::scodec-bits::${Versions.`scodec-bits`}"
 
-  val logstage = ivy"io.7mind.izumi::logstage-core::${Versions.logstage}"
+  val http4s = new {
+    val core = ivy"org.http4s::http4s-core:${Versions.http4s}"
+    val dsl = ivy"org.http4s::http4s-dsl:${Versions.http4s}"
+    val server = ivy"org.http4s::http4s-blaze-server:${Versions.http4s}"
+  }
+
+  val requests = ivy"com.lihaoyi::requests:${Versions.requests}"
+
+  val log4cats = ivy"org.typelevel::log4cats-slf4j::${Versions.log4cats}"
+  val `log4cats-noop` = ivy"org.typelevel::log4cats-noop::${Versions.log4cats}"
+  val `logback-classic` = ivy"ch.qos.logback:logback-classic:${Versions.logback}"
 
   val upickle = ivy"com.lihaoyi::upickle::${Versions.upickle}"
+
+  val `munit-cats-effect` = ivy"org.typelevel::munit-cats-effect-3::1.0.5"
 }
 
+object Versions {
+  val bittorrent = "1.0.0-RC1"
+  val `cats-effect` = "3.1.1"
+  val `scodec-bits` = "1.1.27"
+  val upickle = "1.4.0"
+  val http4s = "1.0.0-M23"
+  val requests = "0.6.9"
+  val log4cats = "2.1.1"
+  val logback = "1.2.3"
+}

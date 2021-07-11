@@ -1,13 +1,14 @@
-import java.nio.file.{Files, Path}
+import java.nio.file.Path
 
-import cats.effect.concurrent.Ref
-import cats.effect.{Blocker, ContextShift, Resource, Sync}
-import cats.implicits._
-import fs2.Stream
+import cats.implicits.*
+import cats.effect.kernel.Ref
+import cats.effect.{Concurrent, Resource, Async}
+import fs2.{Stream, Chunk}
+import fs2.io.file.Files
 import scodec.bits.ByteVector
 
 import scala.collection.immutable.BitSet
-import scala.jdk.StreamConverters._
+import scala.jdk.StreamConverters.*
 
 trait PieceStore[F[_]] {
   def get(index: Int): F[Option[Stream[F, Byte]]]
@@ -17,18 +18,13 @@ trait PieceStore[F[_]] {
 object PieceStore {
   def disk[F[_]](
     directory: Path
-  )(implicit F: Sync[F], cs: ContextShift[F], blocker: Blocker): Resource[F, PieceStore[F]] = {
+  )(using Files[F], Concurrent[F]): Resource[F, PieceStore[F]] = {
 
-    val createDirectory = F.delay {
-      Files.createDirectories(directory)
-    }
+    val createDirectory =
+      Files[F].createDirectories(directory)
 
-    val deleteDirectory = F.delay {
-      Files.list(directory).toScala(List).foreach { path =>
-        Files.delete(path)
-      }
-      Files.delete(directory)
-    }
+    val deleteDirectory =
+      Files[F].deleteDirectoryRecursively(directory)
 
     Resource.make(createDirectory)(_ => deleteDirectory).evalMap { directory =>
       for {
@@ -37,10 +33,10 @@ object PieceStore {
     }
   }
 
-  private class Impl[F[_]](directory: Path, availability: Ref[F, BitSet])(implicit
-    F: Sync[F],
-    contextShift: ContextShift[F],
-    blocker: Blocker
+  private class Impl[F[_]](directory: Path, availability: Ref[F, BitSet])(
+    using
+    Files[F],
+    Concurrent[F],
   ) extends PieceStore[F] {
 
     def get(index: Int): F[Option[Stream[F, Byte]]] =
@@ -51,18 +47,17 @@ object PieceStore {
 
     def put(index: Int, bytes: ByteVector): F[Stream[F, Byte]] = {
       val file = pieceFile(index)
+      val byteStream = Stream.chunk[F, Byte](Chunk.byteVector(bytes))
       for {
-        _ <- F.delay {
-          Files.write(file, bytes.toArray)
-        }
+        _ <- Files[F].writeAll(file)(byteStream).compile.drain
         _ <- availability.update(_ + index)
       } yield readFile(file)
     }
 
-    private def pieceFile(index: Int) = directory.resolve(index.toString)
+    private def pieceFile(index: Int) =
+      directory.resolve(index.toString)
 
-    private def readFile(file: Path) = {
-      fs2.io.file.readAll(file, blocker, 1024 * 1024)
-    }
+    private def readFile(file: Path) =
+      Files[F].readAll(file, 1024 * 1024)
   }
 }

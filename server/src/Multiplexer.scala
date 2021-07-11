@@ -1,7 +1,7 @@
-import cats.effect.Concurrent
-import cats.effect.concurrent.{Deferred, Ref}
-import cats.implicits._
-import cats.effect.implicits._
+import cats.effect.Async
+import cats.effect.kernel.{Deferred, Ref}
+import cats.implicits.*
+import cats.effect.implicits.*
 import fs2.Stream
 
 trait Multiplexer[F[_]] {
@@ -12,7 +12,7 @@ object Multiplexer {
 
   type Result[F[_]] = Stream[F, Byte]
 
-  def apply[F[_]](request: Int => F[Stream[F, Byte]])(implicit F: Concurrent[F]): F[Multiplexer[F]] = {
+  def apply[F[_]](request: Int => F[Stream[F, Byte]])(implicit F: Async[F]): F[Multiplexer[F]] = {
     for {
       pieces <- Ref.of(Map.empty[Int, Deferred[F, Either[Throwable, Result[F]]]])
     } yield new Multiplexer[F] {

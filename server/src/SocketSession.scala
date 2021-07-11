@@ -1,52 +1,51 @@
-import cats.effect.concurrent.Deferred
-import cats.effect.{Concurrent, ContextShift, IO, Resource, Timer}
-import cats.implicits._
+import cats.effect.kernel.Deferred
+import cats.effect.{Concurrent, IO, Resource}
+import cats.effect.std.Queue
+import cats.implicits.*
 import com.github.lavrov.bittorrent.InfoHash
 import com.github.lavrov.bittorrent.app.protocol.{Command, Event}
 import fs2.Stream
-import fs2.concurrent.Queue
-import logstage.LogIO
+import org.typelevel.log4cats.Logger
 import org.http4s.Response
 import org.http4s.server.websocket.WebSocketBuilder
 import org.http4s.websocket.WebSocketFrame
 
-import scala.concurrent.duration._
+import scala.concurrent.duration.*
 import scala.util.Try
 
 object SocketSession {
+
   def apply(
     makeTorrent: InfoHash => Resource[IO, IO[ServerTorrent.Phase.PeerDiscovery]],
     metadataRegistry: MetadataRegistry[IO],
     torrentIndex: TorrentIndex
   )(implicit
     F: Concurrent[IO],
-    cs: ContextShift[IO],
-    timer: Timer[IO],
-    logger: LogIO[IO]
+    logger: Logger[IO]
   ): IO[Response[IO]] =
     for {
       _ <- logger.info("Session started")
       input <- Queue.unbounded[IO, WebSocketFrame]
       output <- Queue.unbounded[IO, WebSocketFrame]
-      send = (str: String) => output.enqueue1(WebSocketFrame.Text(str))
+      send = (str: String) => output.offer(WebSocketFrame.Text(str))
       sendEvent = (e: Event) => send(upickle.default.write(e))
-      handlerAndClose <- CommandHandler(sendEvent, makeTorrent, metadataRegistry, torrentIndex).allocated
-      (handler, closeHandler) = handlerAndClose
+      (handler, closeHandler) <- CommandHandler(sendEvent, makeTorrent, metadataRegistry, torrentIndex).allocated
       fiber <- processor(input, send, handler).compile.drain.start
-      pingFiber <- (timer.sleep(10.seconds) >> input.enqueue1(WebSocketFrame.Ping())).foreverM.start
-      response <- WebSocketBuilder[IO].build(
-        output.dequeue,
-        input.enqueue,
-        onClose = fiber.cancel >> pingFiber.cancel >> closeHandler >> logger.info("Session closed")
-      )
+      pingFiber <- (IO.sleep(10.seconds) >> input.offer(WebSocketFrame.Ping())).foreverM.start
+      response <- WebSocketBuilder[IO]
+        .copy(onClose = fiber.cancel >> pingFiber.cancel >> closeHandler >> logger.info("Session closed"))
+        .build(
+          Stream.fromQueueUnterminated(output),
+          _.evalMap(input.offer),
+        )
     } yield response
 
   private def processor(
     input: Queue[IO, WebSocketFrame],
     send: String => IO[Unit],
     commandHandler: CommandHandler
-  )(implicit logger: LogIO[IO]): Stream[IO, Unit] = {
-    input.dequeue.evalMap {
+  )(implicit logger: Logger[IO]): Stream[IO, Unit] = {
+    Stream.fromQueueUnterminated(input).evalMap {
       case WebSocketFrame.Text("ping", _) =>
         send("pong")
       case WebSocketFrame.Text(Cmd(command), _) =>
@@ -69,10 +68,9 @@ object SocketSession {
     closed: IO[Unit]
   )(implicit
     F: Concurrent[IO],
-    cs: ContextShift[IO],
-    timer: Timer[IO],
-    logger: LogIO[IO]
+    logger: Logger[IO]
   ) {
+
     def handle(command: Command): IO[Unit] =
       command match {
         case Command.GetTorrent(infoHash) =>
@@ -121,7 +119,7 @@ object SocketSession {
       }
 
     private def handleGetTorrent(infoHash: InfoHash): IO[Unit] =
-      F.uncancelable {
+      F.uncancelable { poll =>
         getTorrent(infoHash)
           .use { getTorrent =>
             getTorrent
@@ -146,8 +144,7 @@ object SocketSession {
               }
               .timeout(1.minute)
               .flatMap { torrent =>
-                sendTorrentStats(infoHash, torrent) >>
-                IO.never
+                sendTorrentStats(infoHash, torrent)
               }
           }
           .orElse {
@@ -158,13 +155,13 @@ object SocketSession {
           .void
       }
 
-    private def sendTorrentStats(infoHash: InfoHash, torrent: ServerTorrent): IO[Unit] = {
+    private def sendTorrentStats(infoHash: InfoHash, torrent: ServerTorrent): IO[Nothing] = {
 
       val sendStats =
         for {
           stats <- torrent.stats
           _ <- send(Event.TorrentStats(infoHash, stats.connected, stats.availability))
-          _ <- timer.sleep(5.seconds)
+          _ <- IO.sleep(5.seconds)
         } yield ()
 
       sendStats.foreverM
@@ -179,9 +176,7 @@ object SocketSession {
       torrentIndex: TorrentIndex
     )(implicit
       F: Concurrent[IO],
-      cs: ContextShift[IO],
-      timer: Timer[IO],
-      logger: LogIO[IO]
+      logger: Logger[IO]
     ): Resource[IO, CommandHandler] =
       Resource {
         for {
@@ -194,7 +189,7 @@ object SocketSession {
             torrentIndex,
             closed.get
           )
-          (impl, closed.complete(()))
+          (impl, closed.complete(()).void)
         }
       }
   }

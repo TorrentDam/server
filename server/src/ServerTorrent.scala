@@ -1,16 +1,16 @@
 import java.nio.file.Paths
 
 import ServerTorrent.Phase.FetchingMetadata
-import cats.syntax.all._
-import cats.effect.concurrent.Deferred
-import cats.effect.{Blocker, Concurrent, ContextShift, IO, Resource, Timer}
+import cats.syntax.all.*
+import cats.effect.kernel.Deferred
+import cats.effect.{Concurrent, IO, Resource}
 import com.github.lavrov.bittorrent.InfoHash
 import com.github.lavrov.bittorrent.wire.{DownloadMetadata, Swarm, Torrent}
 import com.github.lavrov.bittorrent.FileMapping
 import com.github.lavrov.bittorrent.TorrentMetadata.Lossless
 import fs2.Stream
 import fs2.concurrent.Signal
-import logstage.LogIO
+import org.typelevel.log4cats.StructuredLogger
 
 trait ServerTorrent {
   def files: FileMapping
@@ -35,10 +35,7 @@ object ServerTorrent {
     makeSwarm: InfoHash => Resource[IO, Swarm[IO]],
     metadataRegistry: MetadataRegistry[IO]
   )(implicit
-    cs: ContextShift[IO],
-    timer: Timer[IO],
-    logger: LogIO[IO],
-    blocker: Blocker
+    logger: StructuredLogger[IO],
   ): Resource[IO, Phase.PeerDiscovery] =
     Resource {
 
@@ -79,9 +76,7 @@ object ServerTorrent {
       } yield (Phase.PeerDiscovery(peerDiscoveryDone.get), fiber.cancel)
     }
 
-  private def create(torrent: Torrent[IO], pieceStore: PieceStore[IO])(implicit
-    cs: ContextShift[IO]
-  ): IO[ServerTorrent] = {
+  private def create(torrent: Torrent[IO], pieceStore: PieceStore[IO]): IO[ServerTorrent] = {
 
     def fetch(index: Int): IO[Stream[IO, Byte]] = {
       for {
@@ -101,7 +96,7 @@ object ServerTorrent {
       multiplexer <- Multiplexer[IO](fetch)
     } yield {
       new ServerTorrent {
-        def files: FileMapping = FileMapping.fromMetadata(torrent.getMetaInfo.parsed)
+        def files: FileMapping = FileMapping.fromMetadata(torrent.metadata.parsed)
         def stats: IO[Stats] =
           for {
             stats <- torrent.stats
@@ -114,7 +109,7 @@ object ServerTorrent {
             }
           )
         def piece(index: Int): IO[Stream[IO, Byte]] = multiplexer.get(index)
-        def metadata: Lossless = torrent.getMetaInfo
+        def metadata: Lossless = torrent.metadata
       }
     }
   }
@@ -122,11 +117,9 @@ object ServerTorrent {
   class Create(
     createSwarm: InfoHash => Resource[IO, Swarm[IO]],
     metadataRegistry: MetadataRegistry[IO]
-  )(implicit
-    cs: ContextShift[IO],
-    timer: Timer[IO],
-    logger: LogIO[IO],
-    blocker: Blocker
+  )(
+    implicit
+    logger: StructuredLogger[IO],
   ) {
     def apply(infoHash: InfoHash): Resource[IO, Phase.PeerDiscovery] =
       create(infoHash, createSwarm, metadataRegistry)
@@ -148,8 +141,8 @@ object ServerTorrent {
       for {
         underlying <- Deferred[F, Either[Throwable, A]]
       } yield new FallibleDeferred[F, A] {
-        def complete(a: A): F[Unit] = underlying.complete(a.asRight)
-        def fail(e: Throwable): F[Unit] = underlying.complete(e.asLeft)
+        def complete(a: A): F[Unit] = underlying.complete(a.asRight).void
+        def fail(e: Throwable): F[Unit] = underlying.complete(e.asLeft).void
         def get: F[A] = underlying.get.flatMap(F.fromEither)
       }
     }

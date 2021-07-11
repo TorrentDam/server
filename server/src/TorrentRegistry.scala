@@ -1,17 +1,18 @@
+import cats.Show.Shown
+
 import java.nio.file.Paths
-
 import cats.data.OptionT
-import cats.effect._
-import cats.effect.concurrent.{Deferred, Ref}
-import cats.implicits._
+import cats.effect.*
+import cats.effect.kernel.{Deferred, Ref}
+import cats.implicits.*
 import com.github.lavrov.bittorrent.InfoHash
-import logstage.LogIO
+import org.typelevel.log4cats.{Logger, StructuredLogger}
 
-import scala.concurrent.duration._
+import scala.concurrent.duration.*
 
 trait TorrentRegistry {
   def get(infoHash: InfoHash): Resource[IO, IO[ServerTorrent.Phase.PeerDiscovery]]
-  def tryGet(infoHash: InfoHash): Resource[OptionT[IO, *], ServerTorrent]
+  def tryGet(infoHash: InfoHash): Resource[OptionT[IO, _], ServerTorrent]
 }
 
 object TorrentRegistry {
@@ -20,7 +21,7 @@ object TorrentRegistry {
 
   def make(
     createTorrent: ServerTorrent.Create
-  )(implicit cs: ContextShift[IO], blocker: Blocker, timer: Timer[IO], logger: LogIO[IO]): IO[TorrentRegistry] =
+  )(implicit logger: StructuredLogger[IO]): IO[TorrentRegistry] =
     for {
       ref <- Ref.of[IO, Registry](emptyRegistry)
     } yield new Impl(ref, createTorrent)
@@ -37,15 +38,12 @@ object TorrentRegistry {
   private val emptyRegistry: Registry = Map.empty
 
   private class Impl(ref: Ref[IO, Registry], createTorrent: ServerTorrent.Create)(implicit
-    cs: ContextShift[IO],
-    blocker: Blocker,
-    timer: Timer[IO],
-    logger: LogIO[IO]
+    logger: StructuredLogger[IO]
   ) extends TorrentRegistry {
 
     def get(infoHash: InfoHash): Resource[IO, IO[ServerTorrent.Phase.PeerDiscovery]] =
       Resource {
-        implicit val logger: LogIO[IO] = loggerWithContext(infoHash)
+        implicit val logger: Logger[IO] = loggerWithContext(infoHash)
         ref
           .modify { registry =>
             registry.get(infoHash) match {
@@ -57,10 +55,10 @@ object TorrentRegistry {
                 val completeDeferred = Deferred.unsafe[IO, Either[Throwable, ServerTorrent.Phase.PeerDiscovery]]
                 val closeDeferred = Deferred.unsafe[IO, Unit]
                 val getTorrent = completeDeferred.get.flatMap(IO.fromEither)
-                val closeTorrent = closeDeferred.complete(())
+                val closeTorrent = closeDeferred.complete(()).void
                 val createdCell = UsageCountingCell(getTorrent, none, closeTorrent, 1, 1)
                 val updatedRegistry = registry.updated(infoHash, createdCell)
-                (updatedRegistry, Left((createdCell.get, completeDeferred.complete _, closeDeferred.get)))
+                (updatedRegistry, Left((createdCell.get, completeDeferred.complete, closeDeferred.get)))
             }
           }
           .flatMap {
@@ -69,13 +67,13 @@ object TorrentRegistry {
               IO.pure((get, release(infoHash)))
             case Left((get, complete, cancel)) =>
               logger.info(s"Make new torrent") >>
-              make(infoHash, complete, cancel).as((get, release(infoHash)))
+              make(infoHash, complete(_).void, cancel).as((get, release(infoHash)))
           }
       }
 
     def tryGet(infoHash: InfoHash): Resource[Optional, ServerTorrent] =
       Resource {
-        implicit val logger: LogIO[IO] = loggerWithContext(infoHash)
+        implicit val logger: Logger[IO] = loggerWithContext(infoHash)
         for {
           torrent <- OptionT(
             ref
@@ -98,7 +96,7 @@ object TorrentRegistry {
       infoHash: InfoHash,
       complete: Either[Throwable, ServerTorrent.Phase.PeerDiscovery] => IO[Unit],
       waitCancel: IO[Unit]
-    )(implicit logger: LogIO[IO]): IO[Unit] = {
+    )(implicit logger: Logger[IO]): IO[Unit] = {
       createTorrent(infoHash)
         .use { phase =>
           complete(phase.asRight) >>
@@ -125,7 +123,7 @@ object TorrentRegistry {
       } yield ()
     }
 
-    private def release(infoHash: InfoHash)(implicit logger: LogIO[IO]): IO[Unit] =
+    private def release(infoHash: InfoHash)(implicit logger: Logger[IO]): IO[Unit] =
       logger.debug(s"Release torrent") >>
       ref
         .modify { registry =>
@@ -141,18 +139,18 @@ object TorrentRegistry {
         }
 
     private def scheduleClose(infoHash: InfoHash, closeIf: UsageCountingCell => Boolean)(implicit
-      logger: LogIO[IO]
+      logger: Logger[IO]
     ): IO[Unit] = {
       val idleTimeout = 30.minutes
       val waitAndTry =
         logger.debug(s"Schedule torrent closure in $idleTimeout") >>
-        timer.sleep(idleTimeout) >>
+        IO.sleep(idleTimeout) >>
         tryClose(infoHash, closeIf)
       waitAndTry.start.void
     }
 
     private def tryClose(infoHash: InfoHash, closeIf: UsageCountingCell => Boolean)(implicit
-      logger: LogIO[IO]
+      logger: Logger[IO]
     ): IO[Unit] = {
       ref.modify { registry =>
         registry.get(infoHash) match {
@@ -170,7 +168,7 @@ object TorrentRegistry {
       }.flatten
     }
 
-    private def loggerWithContext(infoHash: InfoHash): LogIO[IO] =
-      logger.withCustomContext(("infoHash", infoHash.toString))
+    private def loggerWithContext(infoHash: InfoHash): Logger[IO] =
+      logger.addContext(("infoHash", infoHash.toString: Shown))
   }
 }

@@ -1,8 +1,8 @@
 import cats.Monad
-import cats.implicits._
-import cats.effect.implicits._
+import cats.implicits.*
+import cats.effect.implicits.*
 import cats.effect.Concurrent
-import cats.effect.concurrent.Ref
+import cats.effect.kernel.Ref
 import com.github.lavrov.bittorrent.InfoHash
 import com.github.lavrov.bittorrent.TorrentMetadata.Lossless
 import fs2.Stream
@@ -39,7 +39,7 @@ object MetadataRegistry {
   def apply[F[_]: Concurrent](): F[MetadataRegistry[F]] =
     for {
       ref <- Ref.of[F, State](State.empty)
-      topic <- Topic.apply(Option.empty[(InfoHash, Lossless)])
+      topic <- Topic[F, (InfoHash, Lossless)]
     } yield {
 
       new MetadataRegistry[F] {
@@ -52,16 +52,18 @@ object MetadataRegistry {
 
         def put(infoHash: InfoHash, metadata: Lossless): F[Boolean] =
           ref
-            .updateMaybe { map =>
-              map.put(infoHash, metadata)
+            .modify { map =>
+              map.put(infoHash, metadata) match
+                case Some(state) => (state, true)
+                case None => (map, false)
             }
             .flatTap { success =>
               Monad[F].whenA(success) {
-                topic.publish1((infoHash, metadata).some).start
+                topic.publish1((infoHash, metadata)).start
               }
             }
 
-        def subscribe: Stream[F, (InfoHash, Lossless)] = topic.subscribe(1).tail.collect { case Some(value) => value }
+        def subscribe: Stream[F, (InfoHash, Lossless)] = topic.subscribe(1)
       }
 
     }

@@ -12,7 +12,7 @@ object Command {
 
   case class Search(query: String) extends Command
 
-  import CommonFormats._
+  import CommonFormats.*
   implicit val rw: ReadWriter[Command] = ReadWriter.merge(
     macroRW[GetTorrent],
     macroRW[GetDiscovered],
@@ -38,12 +38,12 @@ object Event {
   object SearchResults {
     case class Entry(name: String, infoHash: InfoHash, size: Long, ext: List[String])
     object Entry {
-      import CommonFormats._
+      import CommonFormats.*
       implicit val entryRW: ReadWriter[Entry] = macroRW
     }
   }
 
-  import CommonFormats._
+  import CommonFormats.*
   implicit val fileRW: ReadWriter[File] = macroRW
   implicit val eventRW: ReadWriter[Event] = ReadWriter.merge(
     macroRW[RequestAccepted],

@@ -1,4 +1,4 @@
-name: CI
+name: build
 
 on: [push]
 
@@ -20,6 +20,8 @@ jobs:
         java-version: graalvm-ce-java11@20.1.0
 
     - name: Build jar
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: ./mill server.assembly
 
     - name: Build binary (GraalVM native-image)

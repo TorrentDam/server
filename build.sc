@@ -25,6 +25,7 @@ object server extends Module with NativeImageModule {
   def moduleDeps = List(protocol)
   def ivyDeps = Agg(
     Deps.bittorrent,
+    Deps.`fs2-io`,
     Deps.http4s.core,
     Deps.http4s.dsl,
     Deps.http4s.server,
@@ -126,6 +127,8 @@ object Deps {
 
   val `scodec-bits` = ivy"org.scodec::scodec-bits::${Versions.`scodec-bits`}"
 
+  val `fs2-io` = ivy"co.fs2::fs2-io:${Versions.fs2}"
+
   val http4s = new {
     val core = ivy"org.http4s::http4s-core:${Versions.http4s}"
     val dsl = ivy"org.http4s::http4s-dsl:${Versions.http4s}"
@@ -146,6 +149,7 @@ object Deps {
 object Versions {
   val bittorrent = "1.0.0-RC1"
   val `cats-effect` = "3.1.1"
+  val fs2 = "3.0.6"
   val `scodec-bits` = "1.1.27"
   val upickle = "1.4.0"
   val http4s = "1.0.0-M23"

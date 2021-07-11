@@ -24,10 +24,10 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: ./mill server.assembly
 
-    - name: Build binary (GraalVM native-image)
-      run: |
-        gu install native-image
-        ./mill server.nativeImage
+#    - name: Build binary (GraalVM native-image)
+#      run: |
+#        gu install native-image
+#        ./mill server.nativeImage
 
     - name: Deploy server
       run: |

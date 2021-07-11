@@ -1,7 +1,7 @@
-import Routes.FileIndex
+import cats.syntax.all.*
 import cats.data.{Kleisli, OptionT}
 import cats.effect.{ExitCode, IO, IOApp, Resource}
-import cats.syntax.all.*
+import cats.effect.std.Random
 import com.github.lavrov.bittorrent.dht.{Node, NodeId, PeerDiscovery, QueryHandler, RoutingTable, RoutingTableBootstrap}
 import com.github.lavrov.bittorrent.wire.{Connection, Swarm}
 import com.github.lavrov.bittorrent.{FileMapping, InfoHash, PeerId, TorrentFile}
@@ -17,21 +17,17 @@ import org.typelevel.log4cats.StructuredLogger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 import org.typelevel.ci.*
 import sun.misc.Signal
+import Routes.FileIndex
 
-import scala.util.Random
 import scala.concurrent.duration.*
 
 object Main extends IOApp {
 
-  implicit val logger: StructuredLogger[IO] = Slf4jLogger.getLogger
-
-  val rnd = new Random
-  val selfId: PeerId = PeerId.generate(rnd)
-  val selfNodeId: NodeId = NodeId.generate(rnd)
-  val downloadPieceTimeout: FiniteDuration = 3.minutes
-  val maxPrefetchBytes = 50 * 1000 * 1000
+  def downloadPieceTimeout: FiniteDuration = 3.minutes
+  def maxPrefetchBytes = 50 * 1000 * 1000
 
   def run(args: List[String]): IO[ExitCode] = {
+    given logger: StructuredLogger[IO] = Slf4jLogger.getLoggerFromName[IO]("main")
     registerSignalHandler >>
     makeApp.use { it =>
       val bindPort = Option(System.getenv("PORT")).flatMap(_.toIntOption).getOrElse(9999)
@@ -44,8 +40,11 @@ object Main extends IOApp {
       Signal.handle(new Signal("INT"), _ => System.exit(0))
     }
 
-  def resources: Resource[IO, (TorrentRegistry, TorrentIndex, MetadataRegistry[IO])] = {
+  def resources(using StructuredLogger[IO]): Resource[IO, (TorrentRegistry, TorrentIndex, MetadataRegistry[IO])] = {
     for {
+      given Random[IO] <- Resource.eval { Random.scalaUtilRandom[IO] }
+      selfId <- Resource.eval { PeerId.generate[IO] }
+      selfNodeId <- Resource.eval { NodeId.generate[IO] }
       given SocketGroup[IO] <- Network[IO].socketGroup()
       routingTable <- Resource.eval { RoutingTable[IO](selfNodeId) }
       dhtNode <- Network[IO].datagramSocketGroup().flatMap { implicit group =>
@@ -69,7 +68,7 @@ object Main extends IOApp {
   }
 
 
-  def makeApp: Resource[IO, HttpApp[IO]] = {
+  def makeApp(using StructuredLogger[IO]): Resource[IO, HttpApp[IO]] = {
     import org.http4s.dsl.io.*
     for
       (torrentRegistry, torrentIndex, metadataRegistry) <- resources

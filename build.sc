@@ -94,6 +94,7 @@ trait NativeImageModule extends ScalaModule {
       "--enable-all-security-services",
       "--enable-http",
       "--enable-https",
+      "--allow-incomplete-classpath",
     )
     finalMainClass()
   }
@@ -147,7 +148,7 @@ object Deps {
 }
 
 object Versions {
-  val bittorrent = "1.0.0-RC1"
+  val bittorrent = "1.0.0-RC3"
   val `cats-effect` = "3.1.1"
   val fs2 = "3.0.6"
   val `scodec-bits` = "1.1.27"

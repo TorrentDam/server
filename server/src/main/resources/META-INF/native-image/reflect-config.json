@@ -29,6 +29,9 @@
   "name":"cats.parse.Parser[]"
 },
 {
+  "name":"cats.parse.RadixNode[]"
+},
+{
   "name":"com.github.lavrov.bittorrent.TorrentMetadata$",
   "fields":[{"name":"0bitmap$1", "allowUnsafeAccess":true}]
 },
@@ -45,11 +48,27 @@
   "methods":[{"name":"<init>","parameterTypes":[] }]
 },
 {
+  "name":"com.sun.crypto.provider.ARCFOURCipher",
+  "methods":[{"name":"<init>","parameterTypes":[] }]
+},
+{
+  "name":"com.sun.crypto.provider.ChaCha20Cipher$ChaCha20Poly1305",
+  "methods":[{"name":"<init>","parameterTypes":[] }]
+},
+{
+  "name":"com.sun.crypto.provider.DESCipher",
+  "methods":[{"name":"<init>","parameterTypes":[] }]
+},
+{
+  "name":"com.sun.crypto.provider.DESedeCipher",
+  "methods":[{"name":"<init>","parameterTypes":[] }]
+},
+{
   "name":"com.sun.crypto.provider.DHParameters",
   "methods":[{"name":"<init>","parameterTypes":[] }]
 },
 {
-  "name":"com.sun.crypto.provider.HmacCore$HmacSHA256",
+  "name":"com.sun.crypto.provider.HmacCore$HmacSHA384",
   "methods":[{"name":"<init>","parameterTypes":[] }]
 },
 {
@@ -100,6 +119,9 @@
 },
 {
   "name":"java.nio.ByteBuffer[]"
+},
+{
+  "name":"java.nio.file.OpenOption[]"
 },
 {
   "name":"java.nio.file.attribute.FileAttribute[]"
@@ -420,6 +442,10 @@
 },
 {
   "name":"sun.security.provider.certpath.PKIXCertPathValidator",
+  "methods":[{"name":"<init>","parameterTypes":[] }]
+},
+{
+  "name":"sun.security.rsa.PSSParameters",
   "methods":[{"name":"<init>","parameterTypes":[] }]
 },
 {

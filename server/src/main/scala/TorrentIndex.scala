@@ -56,10 +56,13 @@ object TorrentIndex {
         Index(entries.map(e => (e.name.toLowerCase, e)))
       }
       .flatMap(ref.set)
-      .flatTap { _ =>
-        logger.info("Index refreshed")
-      }
       .attempt
+      .flatTap {
+        case Right(_) =>
+          logger.info("Index refreshed")
+        case Left(error) =>
+          logger.error(error)("Index refresh failed")
+      }
       .flatMap(_ => IO.sleep(10.minutes))
       .foreverM
   }

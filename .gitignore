@@ -1,5 +1,4 @@
-out
-logs
+target
 .idea
 .idea_modules
 .metals

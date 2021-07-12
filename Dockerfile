@@ -1,5 +1,5 @@
-FROM openjdk:18-jdk-slim
+FROM ubuntu
 
-COPY ./out/server/assembly/dest/out.jar /opt/bittorrent-server.jar
+COPY ./server/target/native-image/server /opt/bittorrent-server
 
-ENTRYPOINT ["java", "-Xmx250m", "-jar", "/opt/bittorrent-server.jar"]
+ENTRYPOINT ["/opt/bittorrent-server"]

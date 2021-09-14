@@ -79,8 +79,8 @@ lazy val Deps = new {
 
 lazy val Versions = new {
   val bittorrent = "1.0.0-RC3"
-  val `cats-effect` = "3.1.1"
-  val fs2 = "3.0.6"
+  val `cats-effect` = "3.2.8"
+  val fs2 = "3.1.2"
   val `scodec-bits` = "1.1.27"
   val upickle = "1.4.0"
   val http4s = "1.0.0-M23"

@@ -34,7 +34,7 @@ lazy val server = project
     ),
     nativeImageJvmIndex := "jabba",
     nativeImageJvm := "graalvm-ce-java11",
-    nativeImageVersion := "21.0.0",
+    nativeImageVersion := "21.1.0",
   )
   .enablePlugins(NativeImagePlugin)
 

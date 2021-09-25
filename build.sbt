@@ -47,6 +47,7 @@ lazy val commonSettings: List[Setting[_]] = List(
   libraryDependencies ++= List(
     Deps.`munit-cats-effect` % Test
   ),
+  organization := "com.github.torrentdam.server",
   githubOwner := "TorrentDamDev",
   githubRepository := "server",
   resolvers += Resolver.githubPackages("TorrentDamDev"),

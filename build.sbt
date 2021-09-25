@@ -4,6 +4,7 @@ lazy val root = project.in(file("."))
 lazy val protocol = crossProject(JSPlatform, JVMPlatform).crossType(CrossType.Pure)
   .settings(commonSettings)
   .settings(
+    version := "1.0.0",
     libraryDependencies ++= List(
       Deps.common,
       Deps.upickle,
@@ -46,9 +47,9 @@ lazy val commonSettings: List[Setting[_]] = List(
   libraryDependencies ++= List(
     Deps.`munit-cats-effect` % Test
   ),
-  githubOwner := "TorrentDam",
-  githubRepository := "bittorrent",
-  resolvers += Resolver.githubPackages("TorrentDam"),
+  githubOwner := "TorrentDamDev",
+  githubRepository := "server",
+  resolvers += Resolver.githubPackages("TorrentDamDev"),
 )
 
 lazy val Deps = new {

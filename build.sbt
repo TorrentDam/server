@@ -4,11 +4,11 @@ lazy val root = project.in(file("."))
 lazy val protocol = crossProject(JSPlatform, JVMPlatform).crossType(CrossType.Pure)
   .settings(commonSettings)
   .settings(
-    version := "1.0.0",
+    version := "1.0.1",
     libraryDependencies ++= List(
-      Deps.common,
-      Deps.upickle,
-      Deps.`scodec-bits`,
+      Deps.common.value,
+      Deps.upickle.value,
+      Deps.`scodec-bits`.value,
     )
   )
 
@@ -39,7 +39,7 @@ lazy val server = project
   .enablePlugins(NativeImagePlugin)
 
 lazy val commonSettings: List[Setting[_]] = List(
-  scalaVersion := "3.0.1",
+  scalaVersion := "3.0.2",
   scalacOptions ++= List(
     "-source:future",
     "-Ykind-projector:underscores",
@@ -55,10 +55,10 @@ lazy val commonSettings: List[Setting[_]] = List(
 
 lazy val Deps = new {
 
-  val common = "com.github.torrentdam" %% "common" % Versions.bittorrent
+  val common = Def.setting { "com.github.torrentdam" %%% "common" % Versions.bittorrent }
   val bittorrent = "com.github.torrentdam" %% "bittorrent" % Versions.bittorrent
 
-  val `scodec-bits` = "org.scodec" %% "scodec-bits" % Versions.`scodec-bits`
+  val `scodec-bits` = Def.setting {"org.scodec" %%% "scodec-bits" % Versions.`scodec-bits` }
 
   val `cats-effect` = "org.typelevel" %% "cats-effect" % Versions.`cats-effect`
   val `fs2-io` = "co.fs2" %% "fs2-io" % Versions.fs2
@@ -74,13 +74,13 @@ lazy val Deps = new {
   val log4cats = "org.typelevel" %% "log4cats-slf4j" % Versions.log4cats
   val `logback-classic` = "ch.qos.logback" % "logback-classic" % Versions.logback
 
-  val upickle = "com.lihaoyi" %% "upickle" % Versions.upickle
+  val upickle = Def.setting {"com.lihaoyi" %%% "upickle" % Versions.upickle }
 
   val `munit-cats-effect` = "org.typelevel" %% "munit-cats-effect-3"  % "1.0.5"
 }
 
 lazy val Versions = new {
-  val bittorrent = "1.0.0-RC3"
+  val bittorrent = "1.0.0-RC5"
   val `cats-effect` = "3.2.8"
   val fs2 = "3.1.2"
   val `scodec-bits` = "1.1.27"

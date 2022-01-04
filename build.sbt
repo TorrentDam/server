@@ -39,7 +39,7 @@ lazy val server = project
   .enablePlugins(NativeImagePlugin)
 
 lazy val commonSettings: List[Setting[_]] = List(
-  scalaVersion := "3.0.2",
+  scalaVersion := "3.1.0",
   scalacOptions ++= List(
     "-source:future",
     "-Ykind-projector:underscores",

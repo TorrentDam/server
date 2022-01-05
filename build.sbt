@@ -6,7 +6,7 @@ lazy val protocol = crossProject(JSPlatform, JVMPlatform).crossType(CrossType.Pu
   .settings(
     version := "1.0.1",
     libraryDependencies ++= List(
-      Deps.common.value,
+      Deps.bittorrent.common.value,
       Deps.upickle.value,
       Deps.`scodec-bits`.value,
     )
@@ -17,12 +17,14 @@ lazy val server = project
   .settings(commonSettings)
   .settings(
     libraryDependencies ++= List(
-      Deps.bittorrent,
+      Deps.bittorrent.bittorrent,
+      Deps.bittorrent.tracker,
       Deps.`cats-effect`,
       Deps.`fs2-io`,
       Deps.http4s.core,
       Deps.http4s.dsl,
       Deps.http4s.server,
+      Deps.http4s.client,
       Deps.log4cats,
       Deps.`logback-classic`,
       Deps.requests,
@@ -55,8 +57,12 @@ lazy val commonSettings: List[Setting[_]] = List(
 
 lazy val Deps = new {
 
-  val common = Def.setting { "com.github.torrentdam" %%% "common" % Versions.bittorrent }
-  val bittorrent = "com.github.torrentdam" %% "bittorrent" % Versions.bittorrent
+  val bittorrent = new {
+    private val org = "com.github.torrentdam.bittorrent"
+    val common = Def.setting { org %%% "common" % Versions.bittorrent }
+    val bittorrent = org %% "bittorrent" % Versions.bittorrent
+    val tracker = org %% "tracker" % Versions.bittorrent
+  }
 
   val `scodec-bits` = Def.setting {"org.scodec" %%% "scodec-bits" % Versions.`scodec-bits` }
 
@@ -67,6 +73,7 @@ lazy val Deps = new {
     val core = "org.http4s" %% "http4s-core" % Versions.http4s
     val dsl = "org.http4s" %% "http4s-dsl" % Versions.http4s
     val server = "org.http4s" %% "http4s-blaze-server" % Versions.http4s
+    val client = "org.http4s" %% "http4s-blaze-client" % Versions.http4s
   }
 
   val requests = "com.lihaoyi" %% "requests" % Versions.requests
@@ -80,12 +87,12 @@ lazy val Deps = new {
 }
 
 lazy val Versions = new {
-  val bittorrent = "1.0.0-RC5"
+  val bittorrent = "1.2.1"
   val `cats-effect` = "3.2.8"
   val fs2 = "3.1.2"
   val `scodec-bits` = "1.1.27"
   val upickle = "1.4.0"
-  val http4s = "1.0.0-M23"
+  val http4s = "1.0.0-M30"
   val requests = "0.6.9"
   val log4cats = "2.1.1"
   val logback = "1.2.3"

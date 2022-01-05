@@ -16,9 +16,10 @@ import scala.util.Try
 object SocketSession {
 
   def apply(
-    makeTorrent: InfoHash => Resource[IO, IO[ServerTorrent.Phase.PeerDiscovery]],
+    makeTorrent: MakeTorrent,
     metadataRegistry: MetadataRegistry[IO],
-    torrentIndex: TorrentIndex
+    torrentIndex: TorrentIndex,
+    webSocketBuilder: WebSocketBuilder[IO]       
   )(implicit
     F: Concurrent[IO],
     logger: Logger[IO]
@@ -32,8 +33,8 @@ object SocketSession {
       (handler, closeHandler) <- CommandHandler(sendEvent, makeTorrent, metadataRegistry, torrentIndex).allocated
       fiber <- processor(input, send, handler).compile.drain.start
       pingFiber <- (IO.sleep(10.seconds) >> input.offer(WebSocketFrame.Ping())).foreverM.start
-      response <- WebSocketBuilder[IO]
-        .copy(onClose = fiber.cancel >> pingFiber.cancel >> closeHandler >> logger.info("Session closed"))
+      response <- webSocketBuilder
+        .withOnClose(fiber.cancel >> pingFiber.cancel >> closeHandler >> logger.info("Session closed"))
         .build(
           Stream.fromQueueUnterminated(output),
           _.evalMap(input.offer),
@@ -62,7 +63,7 @@ object SocketSession {
 
   class CommandHandler(
     send: Event => IO[Unit],
-    getTorrent: InfoHash => Resource[IO, IO[ServerTorrent.Phase.PeerDiscovery]],
+    makeTorrent: MakeTorrent,
     metadataRegistry: MetadataRegistry[IO],
     torrentIndex: TorrentIndex,
     closed: IO[Unit]
@@ -73,10 +74,10 @@ object SocketSession {
 
     def handle(command: Command): IO[Unit] =
       command match {
-        case Command.GetTorrent(infoHash) =>
+        case Command.GetTorrent(infoHash, trackers) =>
           for {
             _ <- send(Event.RequestAccepted(infoHash))
-            _ <- handleGetTorrent(InfoHash(infoHash.bytes))
+            _ <- handleGetTorrent(InfoHash(infoHash.bytes), trackers)
           } yield ()
 
         case Command.GetDiscovered() =>
@@ -118,15 +119,15 @@ object SocketSession {
             }
       }
 
-    private def handleGetTorrent(infoHash: InfoHash): IO[Unit] =
+    private def handleGetTorrent(infoHash: InfoHash, trackers: List[String]): IO[Unit] =
       F.uncancelable { poll =>
-        getTorrent(infoHash)
+        makeTorrent(infoHash, trackers)
           .use { getTorrent =>
             getTorrent
-              .flatMap { phase =>
+              .flatMap { (phase: ServerTorrent.Phase.PeerDiscovery) =>
                 phase.done
               }
-              .flatMap { phase =>
+              .flatMap { (phase: ServerTorrent.Phase.FetchingMetadata) =>
                 phase.fromPeers.discrete
                   .evalTap { count =>
                     send(Event.TorrentPeersDiscovered(infoHash, count))
@@ -136,13 +137,13 @@ object SocketSession {
                   .drain >>
                 phase.done
               }
-              .flatMap { phase =>
+              .flatMap { (phase: ServerTorrent.Phase.Ready) =>
                 val metadata = phase.serverTorrent.metadata.parsed
                 val files = metadata.files.map(f => Event.File(f.path, f.length))
                 send(Event.TorrentMetadataReceived(infoHash, metadata.name, files)) >>
                 phase.serverTorrent.pure[IO]
               }
-              .timeout(1.minute)
+              .timeout(5.minutes)
               .flatMap { torrent =>
                 sendTorrentStats(infoHash, torrent)
               }
@@ -171,7 +172,7 @@ object SocketSession {
   object CommandHandler {
     def apply(
       send: Event => IO[Unit],
-      makeTorrent: InfoHash => Resource[IO, IO[ServerTorrent.Phase.PeerDiscovery]],
+      makeTorrent: MakeTorrent,
       metadataRegistry: MetadataRegistry[IO],
       torrentIndex: TorrentIndex
     )(implicit
@@ -192,5 +193,9 @@ object SocketSession {
           (impl, closed.complete(()).void)
         }
       }
+  }
+  
+  trait MakeTorrent {
+    def apply(infoHash: InfoHash, trackers: List[String]): Resource[IO, IO[ServerTorrent.Phase.PeerDiscovery]]
   }
 }

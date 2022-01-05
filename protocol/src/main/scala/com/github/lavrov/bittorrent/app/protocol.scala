@@ -6,7 +6,7 @@ import upickle.default.{macroRW, ReadWriter}
 
 sealed trait Command
 object Command {
-  case class GetTorrent(infoHash: InfoHash) extends Command
+  case class GetTorrent(infoHash: InfoHash, trackers: List[String]) extends Command
 
   case class GetDiscovered() extends Command
 

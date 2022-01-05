@@ -4,7 +4,7 @@ lazy val root = project.in(file("."))
 lazy val protocol = crossProject(JSPlatform, JVMPlatform).crossType(CrossType.Pure)
   .settings(commonSettings)
   .settings(
-    version := "1.0.1",
+    version := sys.env.getOrElse("GITHUB_REF", "1.0.0").stripPrefix("refs/tags/v"),
     libraryDependencies ++= List(
       Deps.bittorrent.common.value,
       Deps.upickle.value,

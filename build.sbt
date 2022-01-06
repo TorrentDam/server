@@ -34,9 +34,7 @@ lazy val server = project
       "--allow-incomplete-classpath",
       "--enable-https",
     ),
-    nativeImageJvmIndex := "jabba",
-    nativeImageJvm := "graalvm-ce-java11",
-    nativeImageVersion := "21.1.0",
+    nativeImageVersion := "21.3.0",
   )
   .enablePlugins(NativeImagePlugin)
 

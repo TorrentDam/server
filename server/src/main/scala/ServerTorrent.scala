@@ -91,6 +91,9 @@ object ServerTorrent {
                 case TrackerClient.Response.Success(peers) => peers
                 case _ => Nil
               }
+              .flatTap(peers =>
+                logger.info(s"Received ${peers.size} from $announceUri")
+              )
               .handleErrorWith(e =>
                 logger.info(s"Could not get peers from $announceUri").as(Nil)
               )

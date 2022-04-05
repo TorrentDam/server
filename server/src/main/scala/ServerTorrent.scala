@@ -83,7 +83,9 @@ object ServerTorrent {
       val trackerPeers: Stream[IO, PeerInfo] =
         for
           announceUri <- Stream.emits(
-            trackers.mapFilter(uri => Uri.fromString(uri).toOption)
+            trackers
+              .filter(_.startsWith("http"))
+              .mapFilter(uri => Uri.fromString(uri).toOption)
           )
           result <- Stream.evalSeq(
             trackerClient

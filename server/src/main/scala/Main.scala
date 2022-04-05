@@ -58,7 +58,7 @@ object Main extends IOApp {
       _ <- Resource.eval { RoutingTableBootstrap(routingTable, dhtNode.client) }
       peerDiscovery <- PeerDiscovery.make[IO](routingTable, dhtNode.client)
       trackerClient <- BlazeClientBuilder[IO].resource.map(httpClient =>
-        TrackerClient(httpClient.expect)
+        TrackerClient.http(httpClient)
       )
       metadataRegistry <- Resource.eval { MetadataRegistry[IO]() }
       createServerTorrent = new ServerTorrent.Create(

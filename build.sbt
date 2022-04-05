@@ -48,15 +48,12 @@ lazy val commonSettings: List[Setting[_]] = List(
     Deps.`munit-cats-effect` % Test
   ),
   organization := "com.github.torrentdam.server",
-  githubOwner := "TorrentDamDev",
-  githubRepository := "server",
-  resolvers += Resolver.githubPackages("TorrentDamDev"),
 )
 
 lazy val Deps = new {
 
   val bittorrent = new {
-    private val org = "com.github.torrentdam.bittorrent"
+    private val org = "io.github.torrentdam.bittorrent"
     val common = Def.setting { org %%% "common" % Versions.bittorrent }
     val bittorrent = org %% "bittorrent" % Versions.bittorrent
     val tracker = org %% "tracker" % Versions.bittorrent
@@ -85,7 +82,7 @@ lazy val Deps = new {
 }
 
 lazy val Versions = new {
-  val bittorrent = "1.2.1"
+  val bittorrent = "1.0.0"
   val `cats-effect` = "3.2.8"
   val fs2 = "3.1.2"
   val `scodec-bits` = "1.1.27"

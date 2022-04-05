@@ -36,7 +36,7 @@ lazy val server = project
     ),
     nativeImageVersion := "21.3.0",
   )
-  .enablePlugins(NativeImagePlugin)
+  .enablePlugins(NativeImagePlugin, JavaAppPackaging)
 
 lazy val commonSettings: List[Setting[_]] = List(
   scalaVersion := "3.1.0",

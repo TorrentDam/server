@@ -45,7 +45,7 @@ jobs:
           file: Dockerfile.jvm
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ghcr.io/torrentdamdev/server:latest, ghcr.io/torrentdamdev/server:${{ github.sha }}
+          tags: ghcr.io/torrentdam/server:${{ github.sha }}
 
       - name: Build binary (GraalVM native-image)
         env:

@@ -11,15 +11,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
 
-    - uses: actions/checkout@v1
+      - uses: actions/checkout@v1
 
-    - name: Set up java
-      uses: actions/setup-java@v1
-      with:
-        java-version: 11
-        java-package: jre
+      - name: Set up java
+        uses: actions/setup-java@v2.1.0
+        with:
+          distribution: adopt
+          java-version: 17
+          java-package: jre
 
-    - name: Publish
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: sbt protocolJS/publish
+      - name: Publish
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          SONATYPE_CREDS: ${{ secrets.SONATYPE_CREDS }}
+          PGP_SECRET_KEY: ${{ secrets.PGP_SECRET_KEY }}
+        run: |
+          echo ${PGP_SECRET_KEY} | base64 --decode | gpg --import
+          export VERSION=${GITHUB_REF#*/v} 
+          echo Publishing $VERSION
+          sbt protocolJS/publish

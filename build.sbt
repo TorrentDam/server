@@ -1,10 +1,11 @@
+import sbt.Keys.credentials
 
 lazy val root = project.in(file("."))
 
 lazy val protocol = crossProject(JSPlatform, JVMPlatform).crossType(CrossType.Pure)
-  .settings(commonSettings)
+  .settings(commonSettings ++ publishSettings)
   .settings(
-    version := sys.env.getOrElse("GITHUB_REF", "1.0.0").stripPrefix("refs/tags/v"),
+    description := "Bittorrent server protocol",
     libraryDependencies ++= List(
       Deps.bittorrent.common.value,
       Deps.upickle.value,
@@ -39,6 +40,8 @@ lazy val server = project
   .enablePlugins(NativeImagePlugin, JavaAppPackaging)
 
 lazy val commonSettings: List[Setting[_]] = List(
+  organization := "io.github.torrentdam.server",
+  version := sys.env.getOrElse("VERSION", "SNAPSHOT"),
   scalaVersion := "3.1.0",
   scalacOptions ++= List(
     "-source:future",
@@ -46,8 +49,45 @@ lazy val commonSettings: List[Setting[_]] = List(
   ),
   libraryDependencies ++= List(
     Deps.`munit-cats-effect` % Test
+  )
+)
+
+lazy val publishSettings: List[Setting[_]] = List(
+  publishTo := {
+    val nexus = "https://s01.oss.sonatype.org/"
+    Some("releases" at nexus + "service/local/staging/deploy/maven2")
+  },
+  credentials ++= {
+    sys.env.get("SONATYPE_CREDS") match {
+      case Some(credentials) =>
+        val Array(username, password) = credentials.split(':')
+        List(
+          Credentials(
+            "Sonatype Nexus Repository Manager",
+            "s01.oss.sonatype.org",
+            username,
+            password
+          )
+        )
+      case None => List.empty[Credentials]
+    }
+  },
+  developers := List(
+    Developer(
+      id = "lavrov",
+      name = "Vitaly Lavrov",
+      email = "lavrovvv@gmail.com",
+      url = url("https://github.com/lavrov")
+    )
   ),
-  organization := "com.github.torrentdam.server",
+  scmInfo := Some(
+    ScmInfo(
+      url("https://github.com/TorrentDam/server"),
+      "scm:git@github.com:TorrentDam/server.git"
+    )
+  ),
+  licenses := List("Unlicense" -> new URL("https://unlicense.org/")),
+  homepage := Some(url("https://torrentdam.github.io/"))
 )
 
 lazy val Deps = new {

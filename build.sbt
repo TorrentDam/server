@@ -30,14 +30,8 @@ lazy val server = project
       Deps.`logback-classic`,
       Deps.requests,
     ),
-    nativeImageOptions ++= List(
-      "--no-fallback",
-      "--allow-incomplete-classpath",
-      "--enable-https",
-    ),
-    nativeImageVersion := "21.3.0",
   )
-  .enablePlugins(NativeImagePlugin, JavaAppPackaging)
+  .enablePlugins(JavaAppPackaging)
 
 lazy val commonSettings: List[Setting[_]] = List(
   organization := "io.github.torrentdam.server",

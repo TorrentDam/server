@@ -47,11 +47,6 @@ jobs:
           push: true
           tags: ghcr.io/torrentdam/server:${{ github.sha }}
 
-      - name: Build binary (GraalVM native-image)
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./sbt server/nativeImage
-
       - name: Deploy server
         run: |
           curl https://cli-assets.heroku.com/install.sh | sh

@@ -1,5 +1,5 @@
-FROM ubuntu
+FROM ibm-semeru-runtimes:open-17-jre-focal
 
-COPY ./server/target/native-image/server /opt/bittorrent-server
+COPY ./server/target/universal/stage /opt/bittorrent-server
 
-ENTRYPOINT ["/opt/bittorrent-server", "-Xmx300m"]
+ENTRYPOINT ["/opt/bittorrent-server/bin/server", "-Xmx300m"]

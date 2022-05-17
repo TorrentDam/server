@@ -9,8 +9,7 @@ import com.github.torrentdam.tracker.Client as TrackerClient
 import com.github.torrentdam.bencode.encode
 import com.github.torrentdam.bencode.format.BencodeFormat
 import fs2.Stream
-import fs2.io.net.Network
-import fs2.io.net.SocketGroup
+import fs2.io.net.{DatagramSocketGroup, Network, SocketGroup}
 import org.http4s.headers.{Range, `Accept-Ranges`, `Content-Disposition`, `Content-Length`, `Content-Range`, `Content-Type`}
 import org.http4s.blaze.server.BlazeServerBuilder
 import org.http4s.{HttpApp, MediaType, Response}
@@ -52,14 +51,17 @@ object Main extends IOApp {
       selfNodeId <- Resource.eval { NodeId.generate[IO] }
       given SocketGroup[IO] <- Network[IO].socketGroup()
       routingTable <- Resource.eval { RoutingTable[IO](selfNodeId) }
-      dhtNode <- Network[IO].datagramSocketGroup().flatMap { implicit group =>
-        Node(selfNodeId, QueryHandler(selfNodeId, routingTable))
-      }
+      given DatagramSocketGroup[IO] <- Network[IO].datagramSocketGroup()
+      dhtNode <- Node(selfNodeId, QueryHandler(selfNodeId, routingTable))
       _ <- Resource.eval { RoutingTableBootstrap(routingTable, dhtNode.client) }
       peerDiscovery <- PeerDiscovery.make[IO](routingTable, dhtNode.client)
-      trackerClient <- BlazeClientBuilder[IO].resource.map(httpClient =>
+      httpTrackerClient <- BlazeClientBuilder[IO].resource.map(httpClient =>
         TrackerClient.http(httpClient)
       )
+      udpTrackerClient <- summon[DatagramSocketGroup[IO]].openDatagramSocket().flatMap(socket =>
+        TrackerClient.udp(selfId, socket)
+      )
+      trackerClient = TrackerClient.dispatching(httpTrackerClient, udpTrackerClient)
       metadataRegistry <- Resource.eval { MetadataRegistry[IO]() }
       createServerTorrent = new ServerTorrent.Create(
         infoHash => peerInfo => Connection.connect[IO](selfId, peerInfo, infoHash),

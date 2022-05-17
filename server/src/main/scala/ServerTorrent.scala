@@ -102,7 +102,7 @@ object ServerTorrent {
       Resource {
         def backgroundTask(peerDiscoveryDone: FallibleDeferred[IO, Phase.FetchingMetadata]): IO[Unit] = {
           Swarm(
-            trackerPeers ++ peerDiscovery.discover(infoHash),
+            trackerPeers merge peerDiscovery.discover(infoHash),
             connect(infoHash),
             30
           )

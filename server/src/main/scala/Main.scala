@@ -200,6 +200,7 @@ object Main extends IOApp {
     BlazeServerBuilder[IO]
       .withHttpWebSocketApp(app)
       .bindHttp(bindPort, "0.0.0.0")
+      .enableHttp2(true)
       .serve
       .compile
       .lastOrError

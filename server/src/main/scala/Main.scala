@@ -1,4 +1,5 @@
 import cats.syntax.all.*
+import cats.effect.syntax.all.*
 import cats.data.{Kleisli, OptionT}
 import cats.effect.{ExitCode, IO, IOApp, Resource}
 import cats.effect.std.Random
@@ -64,7 +65,7 @@ object Main extends IOApp {
       trackerClient = TrackerClient.dispatching(httpTrackerClient, udpTrackerClient)
       metadataRegistry <- Resource.eval { MetadataRegistry[IO]() }
       createServerTorrent = new ServerTorrent.Create(
-        infoHash => peerInfo => Connection.connect[IO](selfId, peerInfo, infoHash),
+        infoHash => peerInfo => Connection.connect[IO](selfId, peerInfo, infoHash).timeout(5.seconds),
         peerDiscovery,
         trackerClient,
         metadataRegistry

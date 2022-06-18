@@ -1,4 +1,4 @@
-FROM ibm-semeru-runtimes:open-18-jre-focal
+FROM eclipse-temurin:latest
 
 COPY ./server/target/universal/stage /opt/bittorrent-server
 

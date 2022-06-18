@@ -36,12 +36,13 @@ lazy val server = project
 lazy val commonSettings: List[Setting[_]] = List(
   organization := "io.github.torrentdam.server",
   version := sys.env.getOrElse("VERSION", "SNAPSHOT"),
-  scalaVersion := "3.1.0",
+  scalaVersion := "3.1.2",
   scalacOptions ++= List(
     "-source:future",
     "-Ykind-projector:underscores",
   ),
   libraryDependencies ++= List(
+    Deps.`cps-async-cats-effect`,
     Deps.`munit-cats-effect` % Test
   )
 )
@@ -113,6 +114,8 @@ lazy val Deps = new {
   val upickle = Def.setting {"com.lihaoyi" %%% "upickle" % Versions.upickle }
 
   val `munit-cats-effect` = "org.typelevel" %% "munit-cats-effect-3"  % "1.0.5"
+
+  val `cps-async-cats-effect` = "com.github.rssh" %% "cps-async-connect-cats-effect" % Versions.`cps-async`
 }
 
 lazy val Versions = new {
@@ -125,4 +128,5 @@ lazy val Versions = new {
   val requests = "0.6.9"
   val log4cats = "2.1.1"
   val logback = "1.2.3"
+  val `cps-async` = "0.9.9"
 }

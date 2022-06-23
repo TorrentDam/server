@@ -1,6 +1,7 @@
 import cats.effect.kernel.Deferred
 import cats.effect.{Concurrent, IO, Resource}
 import cats.effect.std.Queue
+import cats.effect.std.Supervisor
 import cats.implicits.*
 import com.github.lavrov.bittorrent.InfoHash
 import com.github.lavrov.bittorrent.app.protocol.{Command, Event}
@@ -24,7 +25,7 @@ object SocketSession {
     F: Concurrent[IO],
     logger: Logger[IO]
   ): IO[Response[IO]] =
-    for {
+    for
       _ <- logger.info("Session started")
       input <- Queue.unbounded[IO, WebSocketFrame]
       output <- Queue.unbounded[IO, WebSocketFrame]
@@ -39,24 +40,23 @@ object SocketSession {
           Stream.fromQueueUnterminated(output),
           _.evalMap(input.offer),
         )
-    } yield response
+    yield response
 
   private def processor(
     input: Queue[IO, WebSocketFrame],
     send: String => IO[Unit],
     commandHandler: CommandHandler
-  )(implicit logger: Logger[IO]): Stream[IO, Unit] = {
+  )(implicit logger: Logger[IO]): Stream[IO, Unit] =
     Stream.fromQueueUnterminated(input).evalMap {
       case WebSocketFrame.Text("ping", _) =>
         send("pong")
       case WebSocketFrame.Text(Cmd(command), _) =>
-        for {
+        for
           _ <- logger.debug(s"Received $command")
           _ <- commandHandler.handle(command)
-        } yield ()
+        yield ()
       case _ => IO.unit
     }
-  }
 
   private val Cmd: PartialFunction[String, Command] =
     ((input: String) => Try(upickle.default.read[Command](input)).toOption).unlift
@@ -66,7 +66,7 @@ object SocketSession {
     makeTorrent: MakeTorrent,
     metadataRegistry: MetadataRegistry[IO],
     torrentIndex: TorrentIndex,
-    closed: IO[Unit]
+    supervisor: Supervisor[IO]
   )(implicit
     F: Concurrent[IO],
     logger: Logger[IO]
@@ -77,11 +77,11 @@ object SocketSession {
         case Command.RequestTorrent(infoHash, trackers) =>
           for
             _ <- send(Event.RequestAccepted(infoHash))
-            _ <- handleGetTorrent(InfoHash(infoHash.bytes), trackers)
+            _ <- handleRequestTorrent(InfoHash(infoHash.bytes), trackers)
           yield ()
 
-    private def handleGetTorrent(infoHash: InfoHash, trackers: List[String]): IO[Unit] =
-      F.uncancelable { poll =>
+    private def handleRequestTorrent(infoHash: InfoHash, trackers: List[String]): IO[Unit] =
+      supervisor.supervise(
         makeTorrent(infoHash, trackers)
           .use { getTorrent =>
             getTorrent
@@ -112,22 +112,16 @@ object SocketSession {
           .orElse {
             send(Event.TorrentError(infoHash, "Could not fetch metadata"))
           }
-          .start
-          .flatMap(fiber => (closed >> fiber.cancel).start)
-          .void
-      }
+      ).void
 
-    private def sendTorrentStats(infoHash: InfoHash, torrent: ServerTorrent): IO[Nothing] = {
-
+    private def sendTorrentStats(infoHash: InfoHash, torrent: ServerTorrent): IO[Nothing] =
       val sendStats =
-        for {
+        for
           stats <- torrent.stats
           _ <- send(Event.TorrentStats(infoHash, stats.connected, stats.availability))
           _ <- IO.sleep(5.seconds)
-        } yield ()
-
+        yield ()
       sendStats.foreverM
-    }
   }
 
   object CommandHandler {
@@ -140,20 +134,16 @@ object SocketSession {
       F: Concurrent[IO],
       logger: Logger[IO]
     ): Resource[IO, CommandHandler] =
-      Resource {
-        for {
-          closed <- Deferred[IO, Unit]
-        } yield {
-          val impl = new CommandHandler(
-            send,
-            makeTorrent,
-            metadataRegistry,
-            torrentIndex,
-            closed.get
-          )
-          (impl, closed.complete(()).void)
-        }
-      }
+      for
+        supervisor <- Supervisor[IO]
+      yield
+        new CommandHandler(
+          send,
+          makeTorrent,
+          metadataRegistry,
+          torrentIndex,
+          supervisor
+        )
   }
   
   trait MakeTorrent {

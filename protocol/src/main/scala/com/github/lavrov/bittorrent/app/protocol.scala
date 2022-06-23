@@ -6,25 +6,18 @@ import upickle.default.{macroRW, ReadWriter}
 
 sealed trait Command
 object Command {
-  case class GetTorrent(infoHash: InfoHash, trackers: List[String]) extends Command
-
-  case class GetDiscovered() extends Command
-
-  case class Search(query: String) extends Command
+  case class RequestTorrent(infoHash: InfoHash, trackers: List[String]) extends Command
 
   import CommonFormats.*
-  implicit val rw: ReadWriter[Command] = ReadWriter.merge(
-    macroRW[GetTorrent],
-    macroRW[GetDiscovered],
-    macroRW[Search]
-  )
+  implicit val rw: ReadWriter[Command] =
+    ReadWriter.merge(
+      macroRW[RequestTorrent],
+    )
 }
 
 sealed trait Event
 object Event {
   case class RequestAccepted(infoHash: InfoHash) extends Event
-
-  case class Discovered(torrents: Iterable[(InfoHash, String)]) extends Event
 
   case class TorrentPeersDiscovered(infoHash: InfoHash, connected: Int) extends Event
   case class TorrentMetadataReceived(infoHash: InfoHash, name: String, files: List[File]) extends Event
@@ -34,26 +27,16 @@ object Event {
 
   case class TorrentStats(infoHash: InfoHash, connected: Int, availability: List[Double]) extends Event
 
-  case class SearchResults(query: String, entries: List[SearchResults.Entry]) extends Event
-  object SearchResults {
-    case class Entry(name: String, infoHash: InfoHash, size: Long, ext: List[String])
-    object Entry {
-      import CommonFormats.*
-      implicit val entryRW: ReadWriter[Entry] = macroRW
-    }
-  }
-
   import CommonFormats.*
   implicit val fileRW: ReadWriter[File] = macroRW
-  implicit val eventRW: ReadWriter[Event] = ReadWriter.merge(
-    macroRW[RequestAccepted],
-    macroRW[TorrentPeersDiscovered],
-    macroRW[TorrentMetadataReceived],
-    macroRW[TorrentError],
-    macroRW[TorrentStats],
-    macroRW[Discovered],
-    macroRW[SearchResults]
-  )
+  implicit val eventRW: ReadWriter[Event] =
+    ReadWriter.merge(
+      macroRW[RequestAccepted],
+      macroRW[TorrentPeersDiscovered],
+      macroRW[TorrentMetadataReceived],
+      macroRW[TorrentError],
+      macroRW[TorrentStats],
+    )
 }
 
 object CommonFormats {

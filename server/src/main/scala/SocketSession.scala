@@ -73,51 +73,12 @@ object SocketSession {
   ) {
 
     def handle(command: Command): IO[Unit] =
-      command match {
-        case Command.GetTorrent(infoHash, trackers) =>
-          for {
+      command match
+        case Command.RequestTorrent(infoHash, trackers) =>
+          for
             _ <- send(Event.RequestAccepted(infoHash))
             _ <- handleGetTorrent(InfoHash(infoHash.bytes), trackers)
-          } yield ()
-
-        case Command.GetDiscovered() =>
-          for {
-            torrents <- metadataRegistry.recent
-            torrents <-
-              torrents
-                .map {
-                  case (infoHash, metadata) => (infoHash, metadata.parsed.name)
-                }
-                .pure[IO]
-            _ <- send(Event.Discovered(torrents))
-            _ <-
-              metadataRegistry.subscribe.chunks
-                .evalTap { chunk =>
-                  val event =
-                    Event.Discovered(
-                      chunk.toIterable
-                        .map {
-                          case (infoHash, metadata) => (infoHash, metadata.parsed.name)
-                        }
-                    )
-                  send(event)
-                }
-                .interruptWhen(closed.attempt)
-                .compile
-                .drain
-                .start
-          } yield {}
-
-        case Command.Search(query) =>
-          torrentIndex
-            .search(query)
-            .flatMap { entries =>
-              val result = entries.map(e =>
-                Event.SearchResults.Entry(e.name, InfoHash.fromString(e.infoHash), e.size, e.ext)
-              )
-              send(Event.SearchResults(query, result))
-            }
-      }
+          yield ()
 
     private def handleGetTorrent(infoHash: InfoHash, trackers: List[String]): IO[Unit] =
       F.uncancelable { poll =>

@@ -11,7 +11,7 @@ import com.github.torrentdam.tracker.Client as TrackerClient
 import fs2.Stream
 import fs2.concurrent.Signal
 import org.http4s.Uri
-import org.typelevel.log4cats.StructuredLogger
+import org.legogroup.woof.{Logger, given}
 
 trait ServerTorrent {
   def files: FileMapping
@@ -76,7 +76,7 @@ object ServerTorrent {
     metadataRegistry: MetadataRegistry[IO]
   )(
     implicit
-    logger: StructuredLogger[IO],
+    logger: Logger[IO],
   ) {
 
     def apply(infoHash: InfoHash, trackers: List[String]): Resource[IO, Phase.PeerDiscovery] =

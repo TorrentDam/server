@@ -14,8 +14,7 @@ import fs2.io.net.{DatagramSocketGroup, Network, SocketGroup}
 import org.http4s.headers.{Range, `Accept-Ranges`, `Content-Disposition`, `Content-Length`, `Content-Range`, `Content-Type`}
 import org.http4s.blaze.server.BlazeServerBuilder
 import org.http4s.{HttpApp, MediaType, Response}
-import org.typelevel.log4cats.StructuredLogger
-import org.typelevel.log4cats.slf4j.Slf4jLogger
+import org.legogroup.woof.{Logger, given}
 import org.typelevel.ci.*
 import sun.misc.Signal
 import Routes.FileIndex
@@ -33,7 +32,7 @@ object Main extends IOApp {
   def maxPrefetchBytes = 50 * 1000 * 1000
 
   def run(args: List[String]): IO[ExitCode] = asyncScope[IO]{
-    given logger: StructuredLogger[IO] = Slf4jLogger.getLoggerFromName[IO]("main")
+    given Logger[IO] = !mkLogger
     !registerSignalHandler
     val app: HttpWebSocketApp = !makeApp
     val bindPort = Option(System.getenv("PORT")).flatMap(_.toIntOption).getOrElse(9999)
@@ -46,7 +45,7 @@ object Main extends IOApp {
     }
 
   def resources(
-    using StructuredLogger[IO]
+    using Logger[IO]
   ): Resource[IO, (TorrentRegistry, ServerTorrent.Create, TorrentIndex, MetadataRegistry[IO])] =
     async[Resource[IO, _]]{
       given Random[IO] = !Resource.eval { Random.scalaUtilRandom[IO] }
@@ -80,7 +79,7 @@ object Main extends IOApp {
 
   type HttpWebSocketApp = WebSocketBuilder[IO] => HttpApp[IO]
 
-  def makeApp(using StructuredLogger[IO]): Resource[IO, HttpWebSocketApp] = async[Resource[IO, _]]{
+  def makeApp(using Logger[IO]): Resource[IO, HttpWebSocketApp] = async[Resource[IO, _]]{
     import org.http4s.dsl.io.*
     val (torrentRegistry, createServerTorrent, torrentIndex, metadataRegistry) = !resources
 
@@ -202,12 +201,22 @@ object Main extends IOApp {
       .withHttpWebSocketApp(app)
       .bindHttp(bindPort, "0.0.0.0")
       .enableHttp2(true)
+      .withoutBanner
       .serve
       .compile
       .lastOrError
 
   case class PieceDownloadTimeout(index: Long) extends Throwable(s"Timeout downloading piece $index")
 
+  def mkLogger: IO[Logger[IO]] = async[IO] {
+    import org.legogroup.woof.{*, given}
+    import org.legogroup.woof.slf4j.*
+    given Filter = Filter.atLeastLevel(LogLevel.Info)
+    given Printer = JsonPrinter()
+    val logger = !DefaultLogger.makeIo(Output.fromConsole[IO])
+    !logger.registerSlf4j
+    logger
+  }
 }
 
 object Routes {

@@ -6,7 +6,7 @@ import cats.implicits.*
 import com.github.lavrov.bittorrent.InfoHash
 import com.github.lavrov.bittorrent.app.protocol.{Command, Event}
 import fs2.Stream
-import org.typelevel.log4cats.Logger
+import org.legogroup.woof.{Logger, given}
 import org.http4s.Response
 import org.http4s.server.websocket.WebSocketBuilder
 import org.http4s.websocket.WebSocketFrame

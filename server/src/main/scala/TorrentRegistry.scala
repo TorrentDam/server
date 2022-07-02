@@ -6,7 +6,7 @@ import cats.effect.*
 import cats.effect.kernel.{Deferred, Ref}
 import cats.implicits.*
 import com.github.lavrov.bittorrent.InfoHash
-import org.typelevel.log4cats.{Logger, StructuredLogger}
+import org.legogroup.woof.{Logger, given}
 
 import scala.concurrent.duration.*
 
@@ -20,7 +20,7 @@ object TorrentRegistry {
 
   type Optional[A] = OptionT[IO, A]
 
-  def apply()(implicit logger: StructuredLogger[IO]): IO[TorrentRegistry] =
+  def apply()(implicit logger: Logger[IO]): IO[TorrentRegistry] =
     for {
       ref <- Ref.of[IO, Registry](emptyRegistry)
     } yield new Impl(ref)
@@ -37,8 +37,9 @@ object TorrentRegistry {
   private val emptyRegistry: Registry = Map.empty
 
   private class Impl(ref: Ref[IO, Registry])(implicit
-    logger: StructuredLogger[IO]
+    logger: Logger[IO]
   ) extends TorrentRegistry {
+    import Logger.withLogContext
 
     def getOrCreate(
       infoHash: InfoHash
@@ -46,7 +47,6 @@ object TorrentRegistry {
       createTorrent: Resource[IO, ServerTorrent.Phase.PeerDiscovery]
     ): Resource[IO, IO[ServerTorrent.Phase.PeerDiscovery]] =
       Resource {
-        implicit val logger: Logger[IO] = loggerWithContext(infoHash)
         ref
           .modify { registry =>
             registry.get(infoHash) match {
@@ -83,11 +83,11 @@ object TorrentRegistry {
                 .start
                 .as((get, release(infoHash)))
           }
+          .withLogContext("infoHash", infoHash.toString)
       }
 
     def get(infoHash: InfoHash): Resource[Optional, ServerTorrent] =
       Resource {
-        implicit val logger: Logger[IO] = loggerWithContext(infoHash)
         for {
           torrent <- OptionT(
             ref
@@ -164,8 +164,5 @@ object TorrentRegistry {
         }
       }.flatten
     }
-
-    private def loggerWithContext(infoHash: InfoHash): Logger[IO] =
-      logger.addContext(("infoHash", infoHash.toString: Shown))
   }
 }

@@ -26,8 +26,8 @@ lazy val server = project
       Deps.http4s.dsl,
       Deps.http4s.server,
       Deps.http4s.client,
-      Deps.log4cats,
-      Deps.`logback-classic`,
+      Deps.`woof-core`,
+      Deps.`woof-slf4j`,
       Deps.requests,
     ),
   )
@@ -108,8 +108,8 @@ lazy val Deps = new {
 
   val requests = "com.lihaoyi" %% "requests" % Versions.requests
 
-  val log4cats = "org.typelevel" %% "log4cats-slf4j" % Versions.log4cats
-  val `logback-classic` = "ch.qos.logback" % "logback-classic" % Versions.logback
+  val `woof-core` = "org.legogroup" %% "woof-core"  % Versions.woof
+  val `woof-slf4j` = "org.legogroup" %% "woof-slf4j"  % Versions.woof
 
   val upickle = Def.setting {"com.lihaoyi" %%% "upickle" % Versions.upickle }
 
@@ -119,14 +119,13 @@ lazy val Deps = new {
 }
 
 lazy val Versions = new {
-  val bittorrent = "1.3.0"
+  val bittorrent = "1.4.1"
   val `cats-effect` = "3.3.12"
   val fs2 = "3.2.8"
   val `scodec-bits` = "1.1.27"
   val upickle = "1.4.0"
   val http4s = "1.0.0-M30"
   val requests = "0.6.9"
-  val log4cats = "2.1.1"
-  val logback = "1.2.3"
   val `cps-async` = "0.9.9"
+  val woof = "0.4.5"
 }

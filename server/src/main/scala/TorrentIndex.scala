@@ -1,7 +1,7 @@
 import cats.effect.{IO, Resource}
 import cats.effect.kernel.Ref
 import cats.syntax.all.*
-import org.typelevel.log4cats.Logger
+import org.legogroup.woof.{Logger, given}
 
 import scala.concurrent.duration.*
 import scala.util.chaining.scalaUtilChainingOps

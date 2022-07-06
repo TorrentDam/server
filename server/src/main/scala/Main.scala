@@ -12,7 +12,7 @@ import com.github.torrentdam.bencode.format.BencodeFormat
 import fs2.Stream
 import fs2.io.net.{DatagramSocketGroup, Network, SocketGroup}
 import org.http4s.headers.{Range, `Accept-Ranges`, `Content-Disposition`, `Content-Length`, `Content-Range`, `Content-Type`}
-import org.http4s.blaze.server.BlazeServerBuilder
+import org.http4s.ember.server.EmberServerBuilder
 import org.http4s.{HttpApp, MediaType, Response}
 import org.legogroup.woof.{Logger, given}
 import org.typelevel.ci.*
@@ -37,6 +37,7 @@ object Main extends IOApp {
     val app: HttpWebSocketApp = !makeApp
     val bindPort = Option(System.getenv("PORT")).flatMap(_.toIntOption).getOrElse(9999)
     !serve(bindPort, app)
+    ExitCode.Success
   }
 
   def registerSignalHandler: IO[Unit] =
@@ -196,15 +197,15 @@ object Main extends IOApp {
       )
   }
 
-  def serve(bindPort: Int, app: HttpWebSocketApp): IO[ExitCode] =
-    BlazeServerBuilder[IO]
+  def serve(bindPort: Int, app: HttpWebSocketApp): IO[Nothing] =
+    import com.comcast.ip4s.{host, Port}
+    EmberServerBuilder
+      .default[IO]
       .withHttpWebSocketApp(app)
-      .bindHttp(bindPort, "0.0.0.0")
-      .enableHttp2(true)
-      .withoutBanner
-      .serve
-      .compile
-      .lastOrError
+      .withHost(host"0.0.0.0")
+      .withPort(Port.fromInt(bindPort).get)
+      .build
+      .useForever
 
   case class PieceDownloadTimeout(index: Long) extends Throwable(s"Timeout downloading piece $index")
 

@@ -102,7 +102,7 @@ lazy val Deps = new {
   val http4s = new {
     val core = "org.http4s" %% "http4s-core" % Versions.http4s
     val dsl = "org.http4s" %% "http4s-dsl" % Versions.http4s
-    val server = "org.http4s" %% "http4s-blaze-server" % Versions.http4s
+    val server = "org.http4s" %% "http4s-ember-server" % Versions.http4s
     val client = "org.http4s" %% "http4s-blaze-client" % Versions.http4s
   }
 

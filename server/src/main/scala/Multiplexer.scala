@@ -17,14 +17,15 @@ object Multiplexer {
       pieces <- Ref.of(Map.empty[Int, Deferred[F, Either[Throwable, Result[F]]]])
     } yield new Multiplexer[F] {
       def get(index: Int): F[Stream[F, Byte]] = {
-        val cleanup =
+        def cleanup =
           pieces.update { pieces =>
             pieces.removed(index)
           }
-        for {
-          effect <- pieces.modify { pieces =>
-            pieces.get(index) match {
-              case Some(deferred) => (pieces, deferred.get)
+        def requestAndCache = F.uncancelable(_ =>
+          for
+            (deferred, effect) <- pieces.modify { pieces =>
+            pieces.get(index) match
+              case Some(deferred) => (pieces, (deferred, F.unit))
               case _ =>
                 val deferred = Deferred.unsafe[F, Either[Throwable, Result[F]]]
                 val updated = pieces.updated(index, deferred)
@@ -33,13 +34,17 @@ object Multiplexer {
                     .flatTap(deferred.complete)
                     .guarantee(cleanup)
                     .start
-                    .flatMap(_ => deferred.get)
-                (updated, effect)
+                    .void
+                (updated, (deferred, effect))
             }
-          }
-          result <- effect
-          result <- F.fromEither(result)
-        } yield result
+            _ <- effect
+          yield deferred
+        )
+        for
+          deferred <- requestAndCache
+          result <- deferred.get
+          byteStream <- F.fromEither(result)
+        yield byteStream
       }
     }
   }

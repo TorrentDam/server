@@ -31,7 +31,7 @@ object ServerTorrent {
 
   case class Error() extends Throwable
 
-  private def create(torrent: Torrent[IO], pieceStore: PieceStore[IO]): IO[ServerTorrent] = {
+  private def create(torrent: Torrent[IO], pieceStore: PieceStore[IO])(using Logger[IO]): IO[ServerTorrent] = {
 
     def fetch(index: Int): IO[Stream[IO, Byte]] = {
       for {
@@ -48,7 +48,7 @@ object ServerTorrent {
     }
 
     for {
-      multiplexer <- Multiplexer[IO](fetch)
+      multiplexer <- Multiplexer(fetch)
     } yield {
       new ServerTorrent {
         def files: FileMapping = FileMapping.fromMetadata(torrent.metadata.parsed)
@@ -75,7 +75,7 @@ object ServerTorrent {
     trackerClient: TrackerClient,
     metadataRegistry: MetadataRegistry[IO]
   )(
-    implicit
+    using
     logger: Logger[IO],
   ) {
 

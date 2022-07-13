@@ -125,19 +125,22 @@ object Main extends IOApp {
             val extension = file.path.lastOption.map(_.reverse.takeWhile(_ != '.').reverse)
             val fileMapping = torrent.files
             val parallelPieces = scala.math.max(maxPrefetchBytes / torrent.metadata.parsed.pieceLength, 2).toInt
-            def dataStream(span: FileMapping.Span) = {
-              Stream
-                .emits(span.beginIndex to span.endIndex)
-                .covary[IO]
-                .parEvalMap(parallelPieces) { index =>
-                  torrent
-                    .piece(index.toInt)
-                    .timeoutTo(
-                      downloadPieceTimeout,
-                      IO.raiseError(PieceDownloadTimeout(index))
-                    )
-                    .tupleLeft(index)
-                }
+            def downloadPiece(index: Long) =
+              torrent
+                .piece(index.toInt)
+                .timeoutTo(
+                  downloadPieceTimeout,
+                  IO.raiseError(PieceDownloadTimeout(index))
+                )
+                .tupleLeft(index)
+            def dataStream(span: FileMapping.Span) =
+              (
+                Stream.eval(downloadPiece(span.beginIndex)) ++
+                Stream
+                  .emits(span.beginIndex + 1 to span.endIndex)
+                  .covary[IO]
+                  .parEvalMap(parallelPieces)(downloadPiece)
+                )
                 .flatMap {
                   case (span.beginIndex, bytes) =>
                     bytes.drop(span.beginOffset)
@@ -146,7 +149,7 @@ object Main extends IOApp {
                   case (_, bytes) => bytes
                 }
                 .onFinalize(release.value.void)
-            }
+
             val mediaType =
               extension.flatMap(MediaType.forExtension).getOrElse(MediaType.application.`octet-stream`)
             val span0 = fileMapping.value(fileIndex)

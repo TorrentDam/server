@@ -36,7 +36,7 @@ lazy val server = project
 lazy val commonSettings: List[Setting[_]] = List(
   organization := "io.github.torrentdam.server",
   version := sys.env.getOrElse("VERSION", "SNAPSHOT"),
-  scalaVersion := "3.1.2",
+  scalaVersion := "3.2.1",
   scalacOptions ++= List(
     "-source:future",
     "-Ykind-projector:underscores",
@@ -103,7 +103,7 @@ lazy val Deps = new {
     val core = "org.http4s" %% "http4s-core" % Versions.http4s
     val dsl = "org.http4s" %% "http4s-dsl" % Versions.http4s
     val server = "org.http4s" %% "http4s-ember-server" % Versions.http4s
-    val client = "org.http4s" %% "http4s-blaze-client" % Versions.http4s
+    val client = "org.http4s" %% "http4s-ember-client" % Versions.http4s
   }
 
   val requests = "com.lihaoyi" %% "requests" % Versions.requests
@@ -119,12 +119,12 @@ lazy val Deps = new {
 }
 
 lazy val Versions = new {
-  val bittorrent = "1.8.0"
+  val bittorrent = "1.8.3"
   val `cats-effect` = "3.3.12"
   val fs2 = "3.2.8"
   val `scodec-bits` = "1.1.27"
   val upickle = "1.4.0"
-  val http4s = "1.0.0-M30"
+  val http4s = "1.0.0-M37"
   val requests = "0.6.9"
   val `cps-async` = "0.9.9"
   val woof = "0.4.5"

@@ -18,7 +18,7 @@ import org.legogroup.woof.{Logger, given}
 import org.typelevel.ci.*
 import sun.misc.Signal
 import Routes.FileIndex
-import org.http4s.blaze.client.BlazeClientBuilder
+import org.http4s.ember.client.EmberClientBuilder
 import org.http4s.server.websocket.WebSocketBuilder
 import cps.*
 import cps.syntax.*
@@ -58,7 +58,7 @@ object Main extends IOApp {
       val dhtNode = !Node(selfNodeId, QueryHandler(selfNodeId, routingTable))
       !Resource.eval { RoutingTableBootstrap(routingTable, dhtNode.client) }
       val peerDiscovery = !PeerDiscovery.make[IO](routingTable, dhtNode.client)
-      val httpTrackerClient = !BlazeClientBuilder[IO].resource.map(httpClient =>
+      val httpTrackerClient = !EmberClientBuilder.default[IO].build.map(httpClient =>
         TrackerClient.http(httpClient)
       )
       val udpTrackerClient = !summon[DatagramSocketGroup[IO]].openDatagramSocket().flatMap(socket =>
@@ -133,7 +133,7 @@ object Main extends IOApp {
                   IO.raiseError(PieceDownloadTimeout(index))
                 )
                 .tupleLeft(index)
-            def dataStream(span: FileMapping.Span) =
+            def dataStream(span: FileMapping.FileSpan) =
               (
                 Stream.eval(downloadPiece(span.beginIndex)) ++
                 Stream
@@ -157,9 +157,9 @@ object Main extends IOApp {
               case Some(range) =>
                 val first = range.ranges.head.first
                 val second = range.ranges.head.second
-                val advanced = span0.advance(first)
+                val advanced = span0.advance(fileMapping.pieceLength, first)
                 val span = second.fold(advanced) { second =>
-                  advanced.take(second - first)
+                  advanced.take(fileMapping.pieceLength, second - first)
                 }
                 val subRange = rangeOpt match {
                   case Some(range) =>
@@ -207,6 +207,7 @@ object Main extends IOApp {
       .withHttpWebSocketApp(app)
       .withHost(host"0.0.0.0")
       .withPort(Port.fromInt(bindPort).get)
+      .withHttp2
       .build
       .useForever
 
@@ -220,6 +221,19 @@ object Main extends IOApp {
     val logger = !DefaultLogger.makeIo(Output.fromConsole[IO])
     !logger.registerSlf4j
     logger
+  }
+
+  extension (self: FileMapping.FileSpan) {
+    def advance(pieceLength: Long, begin: Long): FileMapping.FileSpan =
+      val spansPieces = begin / pieceLength
+      val remainder = begin % pieceLength
+      val index = self.beginIndex + spansPieces + (self.beginOffset + remainder) / pieceLength
+      val offset = (self.beginOffset + remainder) % pieceLength
+      self.copy(beginIndex = index, beginOffset = offset)
+
+    def take(pieceLength: Long, bytes: Long): FileMapping.FileSpan =
+      val s0 = advance(pieceLength, bytes)
+      self.copy(endIndex = s0.beginIndex, endOffset = self.beginOffset)
   }
 }
 

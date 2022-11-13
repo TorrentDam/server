@@ -173,7 +173,8 @@ object Main extends IOApp {
                   dataStream(span),
                   `Content-Type`(mediaType),
                   `Accept-Ranges`.bytes,
-                  `Content-Range`(subRange, file.length.some)
+                  `Content-Range`(subRange, file.length.some),
+                  `Content-Length`.unsafeFromLong(file.length)
                 )
               case None =>
                 val filename = file.path.lastOption.getOrElse(s"file-$fileIndex")

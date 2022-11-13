@@ -4,12 +4,15 @@ import cats.effect.std.Queue
 import cats.effect.std.Supervisor
 import cats.implicits.*
 import com.github.lavrov.bittorrent.InfoHash
-import com.github.lavrov.bittorrent.app.protocol.{Command, Event}
+import com.github.lavrov.bittorrent.app.protocol.{Message, Event, Command}
 import fs2.Stream
 import org.legogroup.woof.{Logger, given}
 import org.http4s.Response
 import org.http4s.server.websocket.WebSocketBuilder
 import org.http4s.websocket.WebSocketFrame
+import cps.*
+import cps.syntax.*
+import cps.monads.catsEffect.{*, given}
 
 import scala.concurrent.duration.*
 import scala.util.Try
@@ -30,9 +33,9 @@ object SocketSession {
       input <- Queue.unbounded[IO, WebSocketFrame]
       output <- Queue.unbounded[IO, WebSocketFrame]
       send = (str: String) => output.offer(WebSocketFrame.Text(str))
-      sendEvent = (e: Event) => send(upickle.default.write(e))
-      (handler, closeHandler) <- CommandHandler(sendEvent, makeTorrent, metadataRegistry, torrentIndex).allocated
-      fiber <- processor(input, send, handler).compile.drain.start
+      sendMessage = (m: Message) => send(upickle.default.write(m))
+      (handler, closeHandler) <- CommandHandler(sendMessage, makeTorrent, metadataRegistry, torrentIndex).allocated
+      fiber <- processor(input, sendMessage, handler).compile.drain.start
       pingFiber <- (IO.sleep(10.seconds) >> input.offer(WebSocketFrame.Ping())).foreverM.start
       response <- webSocketBuilder
         .withOnClose(fiber.cancel >> pingFiber.cancel >> closeHandler >> logger.info("Session closed"))
@@ -44,22 +47,24 @@ object SocketSession {
 
   private def processor(
     input: Queue[IO, WebSocketFrame],
-    send: String => IO[Unit],
+    send: Message => IO[Unit],
     commandHandler: CommandHandler
   )(implicit logger: Logger[IO]): Stream[IO, Unit] =
     Stream.fromQueueUnterminated(input).evalMap {
-      case WebSocketFrame.Text("ping", _) =>
-        send("pong")
-      case WebSocketFrame.Text(Cmd(command), _) =>
-        for
-          _ <- logger.debug(s"Received $command")
-          _ <- commandHandler.handle(command)
-        yield ()
+      case WebSocketFrame.Text(JsonMessage(message), _) =>
+        message match
+          case Message.Ping =>
+            send(Message.Pong)
+          case command: Command => async[IO] {
+            !logger.debug(s"Received $command")
+            !commandHandler.handle(command)
+          }
+          case _ => IO.unit
       case _ => IO.unit
     }
 
-  private val Cmd: PartialFunction[String, Command] =
-    ((input: String) => Try(upickle.default.read[Command](input)).toOption).unlift
+  private val JsonMessage: PartialFunction[String, Message] =
+    ((input: String) => Try(upickle.default.read[Message](input)).toOption).unlift
 
   class CommandHandler(
     send: Event => IO[Unit],
@@ -74,9 +79,9 @@ object SocketSession {
 
     def handle(command: Command): IO[Unit] =
       command match
-        case Command.RequestTorrent(infoHash, trackers) =>
+        case Message.RequestTorrent(infoHash, trackers) =>
           for
-            _ <- send(Event.RequestAccepted(infoHash))
+            _ <- send(Message.RequestAccepted(infoHash))
             _ <- handleRequestTorrent(InfoHash(infoHash.bytes), trackers)
           yield ()
 
@@ -91,7 +96,7 @@ object SocketSession {
               .flatMap { (phase: ServerTorrent.Phase.FetchingMetadata) =>
                 phase.fromPeers.discrete
                   .evalTap { count =>
-                    send(Event.TorrentPeersDiscovered(infoHash, count))
+                    send(Message.TorrentPeersDiscovered(infoHash, count))
                   }
                   .interruptWhen(phase.done.void.attempt)
                   .compile
@@ -100,8 +105,8 @@ object SocketSession {
               }
               .flatMap { (phase: ServerTorrent.Phase.Ready) =>
                 val metadata = phase.serverTorrent.metadata.parsed
-                val files = metadata.files.map(f => Event.File(f.path, f.length))
-                send(Event.TorrentMetadataReceived(infoHash, metadata.name, files)) >>
+                val files = metadata.files.map(f => Message.File(f.path, f.length))
+                send(Message.TorrentMetadataReceived(infoHash, metadata.name, files)) >>
                 phase.serverTorrent.pure[IO]
               }
               .timeout(5.minutes)
@@ -110,7 +115,7 @@ object SocketSession {
               }
           }
           .orElse {
-            send(Event.TorrentError(infoHash, "Could not fetch metadata"))
+            send(Message.TorrentError(infoHash, "Could not fetch metadata"))
           }
       ).void
 
@@ -118,7 +123,7 @@ object SocketSession {
       val sendStats =
         for
           stats <- torrent.stats
-          _ <- send(Event.TorrentStats(infoHash, stats.connected, stats.availability))
+          _ <- send(Message.TorrentStats(infoHash, stats.connected, stats.availability))
           _ <- IO.sleep(5.seconds)
         yield ()
       sendStats.foreverM

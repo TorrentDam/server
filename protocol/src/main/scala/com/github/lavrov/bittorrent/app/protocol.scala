@@ -4,19 +4,15 @@ import com.github.lavrov.bittorrent.InfoHash
 import scodec.bits.ByteVector
 import upickle.default.{macroRW, ReadWriter}
 
-sealed trait Command
-object Command {
+sealed trait Message
+sealed trait Command extends Message
+sealed trait Event extends Message
+
+object Message {
+
+  case object Ping extends Message
+  case object Pong extends Message
   case class RequestTorrent(infoHash: InfoHash, trackers: List[String]) extends Command
-
-  import CommonFormats.*
-  implicit val rw: ReadWriter[Command] =
-    ReadWriter.merge(
-      macroRW[RequestTorrent],
-    )
-}
-
-sealed trait Event
-object Event {
   case class RequestAccepted(infoHash: InfoHash) extends Event
 
   case class TorrentPeersDiscovered(infoHash: InfoHash, connected: Int) extends Event
@@ -27,23 +23,21 @@ object Event {
 
   case class TorrentStats(infoHash: InfoHash, connected: Int, availability: List[Double]) extends Event
 
-  import CommonFormats.*
+  implicit val infoHashRW: ReadWriter[InfoHash] =
+    implicitly[ReadWriter[String]].bimap(
+      infoHash => infoHash.bytes.toHex,
+      string => InfoHash(ByteVector.fromValidHex(string))
+    )
   implicit val fileRW: ReadWriter[File] = macroRW
-  implicit val eventRW: ReadWriter[Event] =
+  implicit val eventRW: ReadWriter[Message] =
     ReadWriter.merge(
+      macroRW[Ping.type],
+      macroRW[Pong.type],
+      macroRW[RequestTorrent],
       macroRW[RequestAccepted],
       macroRW[TorrentPeersDiscovered],
       macroRW[TorrentMetadataReceived],
       macroRW[TorrentError],
       macroRW[TorrentStats],
-    )
-}
-
-object CommonFormats {
-
-  implicit val infoHashRW: ReadWriter[InfoHash] =
-    implicitly[ReadWriter[String]].bimap(
-      infoHash => infoHash.bytes.toHex,
-      string => InfoHash(ByteVector.fromValidHex(string))
     )
 }

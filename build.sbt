@@ -1,6 +1,6 @@
 import sbt.Keys.credentials
 
-lazy val root = project.in(file("."))
+lazy val root = project.in(file(".")).aggregate(server)
 
 lazy val protocol = crossProject(JSPlatform, JVMPlatform).crossType(CrossType.Pure)
   .settings(commonSettings ++ publishSettings)

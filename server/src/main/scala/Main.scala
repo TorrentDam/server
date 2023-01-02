@@ -57,7 +57,7 @@ object Main extends IOApp {
       given DatagramSocketGroup[IO] = !Network[IO].datagramSocketGroup()
       val dhtNode = !Node(selfNodeId, QueryHandler(selfNodeId, routingTable))
       !Resource.eval { RoutingTableBootstrap(routingTable, dhtNode.client) }
-      val peerDiscovery = !PeerDiscovery.make[IO](routingTable, dhtNode.client)
+      val peerDiscovery = !PeerDiscovery.make(routingTable, dhtNode.client)
       val httpTrackerClient = !EmberClientBuilder.default[IO].build.map(httpClient =>
         TrackerClient.http(httpClient)
       )

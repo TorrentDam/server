@@ -31,7 +31,7 @@ object ServerTorrent {
 
   case class Error() extends Throwable
 
-  private def create(torrent: Torrent[IO], pieceStore: PieceStore[IO])(using Logger[IO]): IO[ServerTorrent] = {
+  private def create(torrent: Torrent, pieceStore: PieceStore[IO])(using Logger[IO]): IO[ServerTorrent] = {
 
     def fetch(index: Int): IO[Stream[IO, Byte]] = {
       for {
@@ -40,7 +40,7 @@ object ServerTorrent {
           case Some(bytes) => IO.pure(bytes)
           case None =>
             for {
-              bytes <- torrent.piece(index)
+              bytes <- torrent.downloadPiece(index)
               bytes <- pieceStore.put(index, bytes)
             } yield bytes
         }
@@ -71,7 +71,7 @@ object ServerTorrent {
 
   class Create(
     connect: InfoHash => PeerInfo => Resource[IO, Connection[IO]],
-    peerDiscovery: PeerDiscovery[IO],
+    peerDiscovery: PeerDiscovery,
     trackerClient: TrackerClient,
     metadataRegistry: MetadataRegistry[IO]
   )(

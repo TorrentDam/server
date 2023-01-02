@@ -45,12 +45,3 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ghcr.io/torrentdam/server:${{ github.sha }}
-
-      - name: Deploy server
-        run: |
-          curl https://cli-assets.heroku.com/install.sh | sh
-          heroku container:login
-          heroku container:push --app bittorrent-server web
-          heroku container:release --app bittorrent-server web
-        env:
-          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}

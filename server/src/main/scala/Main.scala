@@ -45,6 +45,9 @@ object Main extends IOApp {
       Signal.handle(new Signal("INT"), _ => System.exit(0))
     }
 
+  // suppress stack trace report to circumvent https://github.com/typelevel/cats-effect/issues/3086
+  override def reportFailure(err: Throwable): IO[Unit] = IO.unit
+
   def resources(
     using Logger[IO]
   ): Resource[IO, (TorrentRegistry, ServerTorrent.Create, TorrentIndex, MetadataRegistry[IO])] =

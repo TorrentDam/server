@@ -177,7 +177,7 @@ object Main extends IOApp {
                   `Content-Type`(mediaType),
                   `Accept-Ranges`.bytes,
                   `Content-Range`(subRange, file.length.some),
-                  `Content-Length`.unsafeFromLong(file.length)
+                  `Content-Length`.unsafeFromLong(file.length - subRange.first)
                 )
               case None =>
                 val filename = file.path.lastOption.getOrElse(s"file-$fileIndex")

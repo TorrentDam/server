@@ -138,9 +138,8 @@ object Main extends IOApp {
                 .tupleLeft(index)
             def dataStream(span: FileMapping.FileSpan) =
               (
-                Stream.eval(downloadPiece(span.beginIndex)) ++
                 Stream
-                  .emits(span.beginIndex + 1 to span.endIndex)
+                  .emits(span.beginIndex to span.endIndex)
                   .covary[IO]
                   .parEvalMap(parallelPieces)(downloadPiece)
                 )

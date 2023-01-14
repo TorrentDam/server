@@ -70,7 +70,7 @@ object Main extends IOApp {
       val trackerClient = TrackerClient.dispatching(httpTrackerClient, udpTrackerClient)
       val metadataRegistry = !Resource.eval { MetadataRegistry[IO]() }
       val createServerTorrent = new ServerTorrent.Create(
-        infoHash => peerInfo => Connection.connect[IO](selfId, peerInfo, infoHash),
+        infoHash => peerInfo => Connection.connect(selfId, peerInfo, infoHash),
         peerDiscovery,
         trackerClient,
         metadataRegistry

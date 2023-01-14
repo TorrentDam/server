@@ -70,7 +70,7 @@ object ServerTorrent {
   }
 
   class Create(
-    connect: InfoHash => PeerInfo => Resource[IO, Connection[IO]],
+    connect: InfoHash => PeerInfo => Resource[IO, Connection],
     peerDiscovery: PeerDiscovery,
     trackerClient: TrackerClient,
     metadataRegistry: MetadataRegistry[IO]
@@ -80,6 +80,7 @@ object ServerTorrent {
   ) {
 
     def apply(infoHash: InfoHash, trackers: List[String]): Resource[IO, Phase.PeerDiscovery] =
+
       val trackerPeers: Stream[IO, PeerInfo] =
         for
           announceUri <- Stream.emits(
@@ -99,48 +100,45 @@ object ServerTorrent {
               )
           )
         yield result
-      Resource {
-        def backgroundTask(peerDiscoveryDone: FallibleDeferred[IO, Phase.FetchingMetadata]): IO[Unit] = {
-          Swarm(
-            trackerPeers merge peerDiscovery.discover(infoHash),
-            connect(infoHash),
-            30
-          )
-            .use { swarm =>
-              val getMetadata = metadataRegistry.get(infoHash).flatMap {
-                case Some(value) => value.pure[IO]
-                case None => DownloadMetadata(swarm.connected.stream).flatTap(metadataRegistry.put(infoHash, _))
-              }
-              swarm.connected.count.discrete.find(_ > 0).compile.drain >>
-                FallibleDeferred[IO, Phase.Ready].flatMap { fetchingMetadataDone =>
-                  peerDiscoveryDone.complete(FetchingMetadata(swarm.connected.count, fetchingMetadataDone.get)).flatMap {
-                    _ =>
-                      getMetadata.flatMap { metadata =>
-                        logger.info(s"Metadata downloaded") >>
-                          Torrent.make(metadata, swarm).use { torrent =>
-                            PieceStore.disk[IO](Paths.get(s"/tmp", s"bittorrent-${infoHash.toString}")).use { pieceStore =>
-                              create(torrent, pieceStore).flatMap { serverTorrent =>
-                                fetchingMetadataDone.complete(Phase.Ready(infoHash, serverTorrent)).flatMap { _ =>
-                                  IO.never
-                                }
-                              }
-                            }
-                          }
-                      }
-                  }
-                }
-            }
-            .orElse(
-              peerDiscoveryDone.fail(Error())
-            )
-        }
 
-        for {
-          peerDiscoveryDone <- FallibleDeferred[IO, Phase.FetchingMetadata]
-          fiber <- backgroundTask(peerDiscoveryDone).start
-        } yield (Phase.PeerDiscovery(peerDiscoveryDone.get), fiber.cancel)
+      def backgroundTask(peerDiscoveryDone: FallibleDeferred[IO, Phase.FetchingMetadata]): IO[Unit] = {
+        Swarm(
+          trackerPeers merge peerDiscovery.discover(infoHash),
+          connect(infoHash),
+        )
+          .use { swarm =>
+            val getMetadata = metadataRegistry.get(infoHash).flatMap {
+              case Some(value) => value.pure[IO]
+              case None => DownloadMetadata(swarm).flatTap(metadataRegistry.put(infoHash, _))
+            }
+            FallibleDeferred[IO, Phase.Ready].flatMap { fetchingMetadataDone =>
+              peerDiscoveryDone.complete(FetchingMetadata(swarm.connected.count, fetchingMetadataDone.get)) >> {
+                getMetadata.flatMap { metadata =>
+                  logger.info(s"Metadata downloaded") >>
+                    Torrent.make(metadata, swarm).use { torrent =>
+                      PieceStore.disk[IO](Paths.get(s"/tmp", s"bittorrent-${infoHash.toString}")).use { pieceStore =>
+                        create(torrent, pieceStore).flatMap { serverTorrent =>
+                          fetchingMetadataDone.complete(Phase.Ready(infoHash, serverTorrent)).flatMap { _ =>
+                            IO.never
+                          }
+                        }
+                      }
+                    }
+                }
+              }
+            }
+          }
+          .orElse(
+            peerDiscoveryDone.fail(Error())
+          )
       }
 
+      for {
+        peerDiscoveryDone <- Resource.eval(FallibleDeferred[IO, Phase.FetchingMetadata])
+        _ <- backgroundTask(peerDiscoveryDone).background
+      } yield Phase.PeerDiscovery(peerDiscoveryDone.get)
+
+    end apply
   }
 
   case class Stats(

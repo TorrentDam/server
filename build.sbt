@@ -28,7 +28,6 @@ lazy val server = project
       Deps.http4s.client,
       Deps.`woof-core`,
       Deps.`woof-slf4j`,
-      Deps.requests,
     ),
   )
   .enablePlugins(JavaAppPackaging)
@@ -106,26 +105,23 @@ lazy val Deps = new {
     val client = "org.http4s" %% "http4s-ember-client" % Versions.http4s
   }
 
-  val requests = "com.lihaoyi" %% "requests" % Versions.requests
-
   val `woof-core` = "org.legogroup" %% "woof-core"  % Versions.woof
   val `woof-slf4j` = "org.legogroup" %% "woof-slf4j"  % Versions.woof
 
   val upickle = Def.setting {"com.lihaoyi" %%% "upickle" % Versions.upickle }
 
-  val `munit-cats-effect` = "org.typelevel" %% "munit-cats-effect-3"  % "1.0.5"
+  val `munit-cats-effect` = "org.typelevel" %% "munit-cats-effect-3"  % "1.0.7"
 
   val `cps-async-cats-effect` = "com.github.rssh" %% "cps-async-connect-cats-effect" % Versions.`cps-async`
 }
 
 lazy val Versions = new {
-  val bittorrent = "3.0.0"
-  val `cats-effect` = "3.4.4"
-  val fs2 = "3.2.8"
+  val bittorrent = "3.1.1"
+  val `cats-effect` = "3.4.8"
+  val fs2 = "3.6.1"
   val `scodec-bits` = "1.1.27"
-  val upickle = "1.4.0"
+  val upickle = "2.0.0"
   val http4s = "1.0.0-M37"
-  val requests = "0.6.9"
   val `cps-async` = "0.9.9"
   val woof = "0.4.5"
 }

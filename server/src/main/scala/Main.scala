@@ -1,12 +1,11 @@
 import cats.syntax.all.*
 import cats.effect.syntax.all.*
 import cats.data.{Kleisli, OptionT}
-import cats.effect.{ExitCode, IO, IOApp, Resource}
-import cats.effect.std.Random
-import com.github.lavrov.bittorrent.dht.{Node, NodeId, PeerDiscovery, QueryHandler, RoutingTable, RoutingTableBootstrap}
-import com.github.lavrov.bittorrent.wire.{Connection, Swarm}
-import com.github.lavrov.bittorrent.{FileMapping, InfoHash, PeerId, TorrentFile}
-import com.github.torrentdam.tracker.Client as TrackerClient
+import cats.effect.{ExitCode, IO, IOApp, Resource, ResourceIO}
+import cats.effect.std.{ Random, Dispatcher }
+import com.github.torrentdam.bittorrent.dht.{Node, NodeId, PeerDiscovery, QueryHandler, RoutingTable, RoutingTableBootstrap}
+import com.github.torrentdam.bittorrent.wire.{Connection, Swarm}
+import com.github.torrentdam.bittorrent.{FileMapping, InfoHash, PeerId, TorrentFile}
 import com.github.torrentdam.bencode.encode
 import com.github.torrentdam.bencode.format.BencodeFormat
 import fs2.Stream
@@ -15,6 +14,9 @@ import org.http4s.headers.{Range, `Accept-Ranges`, `Content-Disposition`, `Conte
 import org.http4s.ember.server.EmberServerBuilder
 import org.http4s.{HttpApp, MediaType, Response}
 import org.legogroup.woof.{Logger, given}
+import org.legogroup.woof.slf4j.registerSlf4j
+import org.typelevel.log4cats.LoggerFactory
+import org.typelevel.log4cats.slf4j.Slf4jFactory
 import org.typelevel.ci.*
 import sun.misc.Signal
 import Routes.FileIndex
@@ -32,7 +34,10 @@ object Main extends IOApp {
   def maxPrefetchBytes = 50 * 1000 * 1000
 
   def run(args: List[String]): IO[ExitCode] = asyncScope[IO]{
-    given Logger[IO] = !mkLogger
+    given logger: Logger[IO] = !mkLogger
+    given Dispatcher[IO] = !Dispatcher.sequential[IO]
+    !logger.registerSlf4j
+    given LoggerFactory[IO] = Slf4jFactory.create[IO]
     !registerSignalHandler
     val app: HttpWebSocketApp = !makeApp
     val bindPort = Option(System.getenv("PORT")).flatMap(_.toIntOption).getOrElse(9999)
@@ -61,18 +66,10 @@ object Main extends IOApp {
       val dhtNode = !Node(selfNodeId, QueryHandler(selfNodeId, routingTable))
       !Resource.eval { RoutingTableBootstrap(routingTable, dhtNode.client) }
       val peerDiscovery = !PeerDiscovery.make(routingTable, dhtNode.client)
-      val httpTrackerClient = !EmberClientBuilder.default[IO].build.map(httpClient =>
-        TrackerClient.http(httpClient)
-      )
-      val udpTrackerClient = !summon[DatagramSocketGroup[IO]].openDatagramSocket().flatMap(socket =>
-        TrackerClient.udp(selfId, socket)
-      )
-      val trackerClient = TrackerClient.dispatching(httpTrackerClient, udpTrackerClient)
       val metadataRegistry = !Resource.eval { MetadataRegistry[IO]() }
       val createServerTorrent = new ServerTorrent.Create(
         infoHash => peerInfo => Connection.connect(selfId, peerInfo, infoHash),
         peerDiscovery,
-        trackerClient,
         metadataRegistry
       )
       val torrentRegistry = !Resource.eval { TorrentRegistry() }
@@ -203,7 +200,7 @@ object Main extends IOApp {
       )
   }
 
-  def serve(bindPort: Int, app: HttpWebSocketApp): IO[Nothing] =
+  def serve(bindPort: Int, app: HttpWebSocketApp)(using LoggerFactory[IO]): IO[Nothing] =
     import com.comcast.ip4s.{host, Port}
     EmberServerBuilder
       .default[IO]
@@ -216,14 +213,12 @@ object Main extends IOApp {
 
   case class PieceDownloadTimeout(index: Long) extends Throwable(s"Timeout downloading piece $index")
 
-  def mkLogger: IO[Logger[IO]] = async[IO] {
+  def mkLogger: IO[Logger[IO]] = asyncScope[IO] {
     import org.legogroup.woof.{*, given}
     import org.legogroup.woof.slf4j.*
     given Filter = Filter.atLeastLevel(LogLevel.Info)
     given Printer = JsonPrinter()
-    val logger = !DefaultLogger.makeIo(Output.fromConsole[IO])
-    !logger.registerSlf4j
-    logger
+    !DefaultLogger.makeIo(Output.fromConsole[IO])
   }
 
   extension (self: FileMapping.FileSpan) {

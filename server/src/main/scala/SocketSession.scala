@@ -3,7 +3,7 @@ import cats.effect.{Concurrent, IO, Resource}
 import cats.effect.std.Queue
 import cats.effect.std.Supervisor
 import cats.implicits.*
-import com.github.lavrov.bittorrent.InfoHash
+import com.github.torrentdam.bittorrent.InfoHash
 import com.github.lavrov.bittorrent.app.protocol.{Message, Event, Command}
 import fs2.Stream
 import org.legogroup.woof.{Logger, given}

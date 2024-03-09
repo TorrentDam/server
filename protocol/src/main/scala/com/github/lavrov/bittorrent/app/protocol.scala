@@ -1,6 +1,6 @@
 package com.github.lavrov.bittorrent.app.protocol
 
-import com.github.lavrov.bittorrent.InfoHash
+import com.github.torrentdam.bittorrent.InfoHash
 import scodec.bits.ByteVector
 import upickle.default.{macroRW, ReadWriter}
 

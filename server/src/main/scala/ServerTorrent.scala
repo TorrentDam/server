@@ -3,11 +3,10 @@ import ServerTorrent.Phase.FetchingMetadata
 import cats.syntax.all.*
 import cats.effect.kernel.{Deferred, Resource}
 import cats.effect.{Concurrent, IO, Resource}
-import com.github.lavrov.bittorrent.{FileMapping, InfoHash, MagnetLink, PeerInfo}
-import com.github.lavrov.bittorrent.wire.{Connection, DownloadMetadata, Swarm, Torrent}
-import com.github.lavrov.bittorrent.TorrentMetadata.Lossless
-import com.github.lavrov.bittorrent.dht.PeerDiscovery
-import com.github.torrentdam.tracker.Client as TrackerClient
+import com.github.torrentdam.bittorrent.{FileMapping, InfoHash, MagnetLink, PeerInfo}
+import com.github.torrentdam.bittorrent.wire.{Connection, DownloadMetadata, Swarm, Torrent}
+import com.github.torrentdam.bittorrent.TorrentMetadata.Lossless
+import com.github.torrentdam.bittorrent.dht.PeerDiscovery
 import fs2.Stream
 import fs2.concurrent.Signal
 import org.http4s.Uri
@@ -72,7 +71,6 @@ object ServerTorrent {
   class Create(
     connect: InfoHash => PeerInfo => Resource[IO, Connection],
     peerDiscovery: PeerDiscovery,
-    trackerClient: TrackerClient,
     metadataRegistry: MetadataRegistry[IO]
   )(
     using
@@ -81,30 +79,10 @@ object ServerTorrent {
 
     def apply(infoHash: InfoHash, trackers: List[String]): Resource[IO, Phase.PeerDiscovery] =
 
-      val trackerPeers: Stream[IO, PeerInfo] =
-        for
-          announceUri <- Stream.emits(
-            trackers.mapFilter(uri => Uri.fromString(uri).toOption)
-          )
-          result <- Stream.evalSeq(
-            trackerClient
-              .get(announceUri, infoHash).map {
-                case TrackerClient.Response.Success(peers) => peers
-                case _ => Nil
-              }
-              .flatTap(peers =>
-                logger.info(s"Received ${peers.size} from $announceUri")
-              )
-              .handleErrorWith(e =>
-                logger.info(s"Could not get peers from $announceUri").as(Nil)
-              )
-          )
-        yield result
-
       def createInPhases(peerDiscoveryOutcome: FallibleDeferred[IO, Phase.FetchingMetadata]): Resource[IO, ServerTorrent] =
         for
           swarm <- Swarm(
-            trackerPeers merge peerDiscovery.discover(infoHash),
+            peerDiscovery.discover(infoHash),
             connect(infoHash),
           )
           fetchingMetadataDone <- Resource.eval(FallibleDeferred[IO, Phase.Ready])

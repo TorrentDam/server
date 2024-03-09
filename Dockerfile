@@ -1,4 +1,4 @@
-FROM eclipse-temurin:latest
+FROM eclipse-temurin:21-jre-jammy
 
 COPY ./server/target/universal/stage /opt/bittorrent-server
 

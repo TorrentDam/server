@@ -19,7 +19,7 @@ lazy val server = project
   .settings(
     libraryDependencies ++= List(
       Deps.bittorrent.bittorrent,
-      Deps.bittorrent.tracker,
+      Deps.bittorrent.dht,
       Deps.`cats-effect`,
       Deps.`fs2-io`,
       Deps.http4s.core,
@@ -35,7 +35,7 @@ lazy val server = project
 lazy val commonSettings: List[Setting[_]] = List(
   organization := "io.github.torrentdam.server",
   version := sys.env.getOrElse("VERSION", "SNAPSHOT"),
-  scalaVersion := "3.2.1",
+  scalaVersion := "3.3.0",
   scalacOptions ++= List(
     "-source:future",
     "-Ykind-projector:underscores",
@@ -90,7 +90,7 @@ lazy val Deps = new {
     private val org = "io.github.torrentdam.bittorrent"
     val common = Def.setting { org %%% "common" % Versions.bittorrent }
     val bittorrent = org %% "bittorrent" % Versions.bittorrent
-    val tracker = org %% "tracker" % Versions.bittorrent
+    val dht = org %% "dht" % Versions.bittorrent
   }
 
   val `scodec-bits` = Def.setting {"org.scodec" %%% "scodec-bits" % Versions.`scodec-bits` }
@@ -116,12 +116,12 @@ lazy val Deps = new {
 }
 
 lazy val Versions = new {
-  val bittorrent = "3.1.1"
-  val `cats-effect` = "3.4.8"
-  val fs2 = "3.6.1"
+  val bittorrent = "3.1.2"
+  val `cats-effect` = "3.5.4"
+  val fs2 = "3.9.4"
   val `scodec-bits` = "1.1.27"
   val upickle = "2.0.0"
-  val http4s = "1.0.0-M37"
-  val `cps-async` = "0.9.9"
-  val woof = "0.4.5"
+  val http4s = "1.0.0-M40"
+  val `cps-async` = "0.9.11"
+  val woof = "0.6.0"
 }

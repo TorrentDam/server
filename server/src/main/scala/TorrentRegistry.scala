@@ -5,7 +5,7 @@ import cats.data.OptionT
 import cats.effect.*
 import cats.effect.kernel.{Deferred, Ref}
 import cats.implicits.*
-import com.github.lavrov.bittorrent.InfoHash
+import com.github.torrentdam.bittorrent.InfoHash
 import org.legogroup.woof.{Logger, given}
 
 import scala.concurrent.duration.*

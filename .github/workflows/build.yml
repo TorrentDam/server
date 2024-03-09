@@ -19,8 +19,7 @@ jobs:
         uses: actions/setup-java@v2.1.0
         with:
           distribution: 'adopt'
-          java-version: 11
-          java-package: jre
+          java-version: 21
 
       - name: Build
         env:

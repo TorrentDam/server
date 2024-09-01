@@ -24,7 +24,7 @@ jobs:
       - name: Build
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./sbt server/stage
+        run: sbt server/stage
 
       - name: Set up Docker Buildx
         id: buildx

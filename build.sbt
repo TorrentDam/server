@@ -35,7 +35,7 @@ lazy val server = project
 lazy val commonSettings: List[Setting[_]] = List(
   organization := "io.github.torrentdam.server",
   version := sys.env.getOrElse("VERSION", "SNAPSHOT"),
-  scalaVersion := "3.3.0",
+  scalaVersion := "3.5.0",
   scalacOptions ++= List(
     "-source:future",
     "-Ykind-projector:underscores",
@@ -80,7 +80,7 @@ lazy val publishSettings: List[Setting[_]] = List(
       "scm:git@github.com:TorrentDam/server.git"
     )
   ),
-  licenses := List("Unlicense" -> new URL("https://unlicense.org/")),
+  licenses := List("Unlicense" -> url("https://unlicense.org/")),
   homepage := Some(url("https://torrentdam.github.io/"))
 )
 
@@ -116,7 +116,7 @@ lazy val Deps = new {
 }
 
 lazy val Versions = new {
-  val bittorrent = "3.1.2"
+  val bittorrent = "3.3.0"
   val `cats-effect` = "3.5.4"
   val fs2 = "3.9.4"
   val `scodec-bits` = "1.1.27"

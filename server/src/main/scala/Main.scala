@@ -2,7 +2,7 @@ import cats.syntax.all.*
 import cats.effect.syntax.all.*
 import cats.data.{Kleisli, OptionT}
 import cats.effect.{ExitCode, IO, IOApp, Resource, ResourceIO}
-import cats.effect.std.{ Random, Dispatcher }
+import cats.effect.std.{Dispatcher, Random}
 import com.github.torrentdam.bittorrent.dht.{Node, NodeId, PeerDiscovery, QueryHandler, RoutingTable, RoutingTableBootstrap}
 import com.github.torrentdam.bittorrent.wire.{Connection, Swarm}
 import com.github.torrentdam.bittorrent.{FileMapping, InfoHash, PeerId, TorrentFile}
@@ -20,6 +20,7 @@ import org.typelevel.log4cats.slf4j.Slf4jFactory
 import org.typelevel.ci.*
 import sun.misc.Signal
 import Routes.FileIndex
+import com.comcast.ip4s.{Host, SocketAddress}
 import org.http4s.ember.client.EmberClientBuilder
 import org.http4s.server.websocket.WebSocketBuilder
 import cps.*
@@ -34,12 +35,20 @@ object Main extends IOApp {
   def maxPrefetchBytes = 50 * 1000 * 1000
 
   def run(args: List[String]): IO[ExitCode] = asyncScope[IO]{
+    val dhtBootstrapNode = args match {
+      case addressString :: _ =>
+        val address = !SocketAddress
+          .fromString(addressString)
+          .liftTo[ResourceIO](new IllegalArgumentException("Invalid host"))
+        Some(address)
+      case _ => None
+    }
     given logger: Logger[IO] = !mkLogger
     given Dispatcher[IO] = !Dispatcher.sequential[IO]
     !logger.registerSlf4j
     given LoggerFactory[IO] = Slf4jFactory.create[IO]
     !registerSignalHandler
-    val app: HttpWebSocketApp = !makeApp
+    val app: HttpWebSocketApp = !makeApp(dhtBootstrapNode)
     val bindPort = Option(System.getenv("PORT")).flatMap(_.toIntOption).getOrElse(9999)
     !serve(bindPort, app)
     ExitCode.Success
@@ -54,6 +63,8 @@ object Main extends IOApp {
   override def reportFailure(err: Throwable): IO[Unit] = IO.unit
 
   def resources(
+               dhtBootstrapNode: Option[SocketAddress[Host]]
+               )(
     using Logger[IO]
   ): Resource[IO, (TorrentRegistry, ServerTorrent.Create, TorrentIndex, MetadataRegistry[IO])] =
     async[Resource[IO, _]]{
@@ -63,8 +74,9 @@ object Main extends IOApp {
       given SocketGroup[IO] = !Network[IO].socketGroup()
       val routingTable = !Resource.eval { RoutingTable[IO](selfNodeId) }
       given DatagramSocketGroup[IO] = !Network[IO].datagramSocketGroup()
-      val dhtNode = !Node(selfNodeId, QueryHandler(selfNodeId, routingTable))
-      !Resource.eval { RoutingTableBootstrap(routingTable, dhtNode.client) }
+      val dhtNode = !Node(selfNodeId, none, QueryHandler(selfNodeId, routingTable))
+      val bootstrapNodeAddress = dhtBootstrapNode.foldLeft(RoutingTableBootstrap.PublicBootstrapNodes)(_ prepended _)
+      !Resource.eval { RoutingTableBootstrap(routingTable, dhtNode.client, bootstrapNodeAddress) }
       val peerDiscovery = !PeerDiscovery.make(routingTable, dhtNode.client)
       val metadataRegistry = !Resource.eval { MetadataRegistry[IO]() }
       val createServerTorrent = new ServerTorrent.Create(
@@ -80,9 +92,11 @@ object Main extends IOApp {
 
   type HttpWebSocketApp = WebSocketBuilder[IO] => HttpApp[IO]
 
-  def makeApp(using Logger[IO]): Resource[IO, HttpWebSocketApp] = async[Resource[IO, _]]{
+  def makeApp(
+    dhtBootstrapNode: Option[SocketAddress[Host]]
+             )(using Logger[IO]): Resource[IO, HttpWebSocketApp] = async[Resource[IO, _]]{
     import org.http4s.dsl.io.*
-    val (torrentRegistry, createServerTorrent, torrentIndex, metadataRegistry) = !resources
+    val (torrentRegistry, createServerTorrent, torrentIndex, metadataRegistry) = !resources(dhtBootstrapNode)
 
     def handleSocket(wsBuilder: WebSocketBuilder[IO]) =
       val makeTorrent: SocketSession.MakeTorrent =

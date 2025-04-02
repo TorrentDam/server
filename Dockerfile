@@ -1,4 +1,4 @@
-FROM eclipse-temurin:23-jre-noble
+FROM eclipse-temurin:24-jre-noble
 
 COPY ./server/target/universal/stage /opt/bittorrent-server
 

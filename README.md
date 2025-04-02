@@ -5,6 +5,10 @@ Serves files from BitTorrent network
 
 ## Build and run
 
-```shell
+```
+nix develop
+```
+
+```
 sbt server/run
 ```

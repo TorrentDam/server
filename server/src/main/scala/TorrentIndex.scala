@@ -38,7 +38,7 @@ object TorrentIndex {
             }
             .filter(_._2 > 0)
             .toList
-            .sortBy(_._2)(Ordering[Int].reverse)
+            .sortBy(_._2)(using Ordering[Int].reverse)
             .take(100)
             .map(_._1)
       }

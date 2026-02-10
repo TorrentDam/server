@@ -65,29 +65,23 @@ object Main extends IOApp {
   def resources(
                dhtBootstrapNode: Option[SocketAddress[Host]]
                )(
-    using Logger[IO]
-  ): Resource[IO, (TorrentRegistry, ServerTorrent.Create, TorrentIndex, MetadataRegistry[IO])] =
-    async[Resource[IO, _]]{
-      given Random[IO] = !Resource.eval { Random.scalaUtilRandom[IO] }
-      val selfId = !Resource.eval { PeerId.generate[IO] }
-      val selfNodeId = !Resource.eval { NodeId.generate[IO] }
-      given SocketGroup[IO] = !Network[IO].socketGroup()
-      val routingTable = !Resource.eval { RoutingTable[IO](selfNodeId) }
-      given DatagramSocketGroup[IO] = !Network[IO].datagramSocketGroup()
-      val dhtNode = !Node(selfNodeId, none, QueryHandler(selfNodeId, routingTable))
-      val bootstrapNodeAddress = dhtBootstrapNode.foldLeft(RoutingTableBootstrap.PublicBootstrapNodes)(_ prepended _)
-      !Resource.eval { RoutingTableBootstrap(routingTable, dhtNode.client, bootstrapNodeAddress) }
-      val peerDiscovery = !PeerDiscovery.make(routingTable, dhtNode.client)
-      val metadataRegistry = !Resource.eval { MetadataRegistry[IO]() }
-      val createServerTorrent = new ServerTorrent.Create(
-        infoHash => peerInfo => Connection.connect(selfId, peerInfo, infoHash),
-        peerDiscovery,
-        metadataRegistry
-      )
-      val torrentRegistry = !Resource.eval { TorrentRegistry() }
-      val torrentIndex = !TorrentIndex()
-      (torrentRegistry, createServerTorrent, torrentIndex, metadataRegistry)
-    }
+     using Logger[IO]
+   ): Resource[IO, (TorrentRegistry, ServerTorrent.Create, TorrentIndex, MetadataRegistry[IO])] =
+     async[Resource[IO, _]]{
+       given Random[IO] = !Resource.eval { Random.scalaUtilRandom[IO] }
+       val selfId = !Resource.eval { PeerId.generate[IO] }
+       val dhtNode = !Node(port = none, bootstrapNodeAddress = dhtBootstrapNode)
+       val peerDiscovery = dhtNode.discovery
+       val metadataRegistry = !Resource.eval { MetadataRegistry[IO]() }
+       val createServerTorrent = new ServerTorrent.Create(
+         infoHash => peerInfo => Connection.connect(selfId, peerInfo, infoHash),
+         peerDiscovery,
+         metadataRegistry
+       )
+       val torrentRegistry = !Resource.eval { TorrentRegistry() }
+       val torrentIndex = !TorrentIndex()
+       (torrentRegistry, createServerTorrent, torrentIndex, metadataRegistry)
+     }
 
 
   type HttpWebSocketApp = WebSocketBuilder[IO] => HttpApp[IO]

@@ -35,10 +35,10 @@ lazy val server = project
 lazy val commonSettings: List[Setting[_]] = List(
   organization := "io.github.torrentdam.server",
   version := sys.env.getOrElse("VERSION", "SNAPSHOT"),
-  scalaVersion := "3.5.0",
+  scalaVersion := "3.7.1",
   scalacOptions ++= List(
     "-source:future",
-    "-Ykind-projector:underscores",
+    "-Xkind-projector:underscores",
   ),
   libraryDependencies ++= List(
     Deps.`cps-async-cats-effect`,
@@ -116,12 +116,12 @@ lazy val Deps = new {
 }
 
 lazy val Versions = new {
-  val bittorrent = "3.4.0"
-  val `cats-effect` = "3.5.4"
-  val fs2 = "3.9.4"
-  val `scodec-bits` = "1.1.27"
+  val bittorrent = "3.6.0"
+  val `cats-effect` = "3.6.0"
+  val fs2 = "3.12.2"
+  val `scodec-bits` = "1.2.4"
   val upickle = "2.0.0"
   val http4s = "1.0.0-M40"
-  val `cps-async` = "0.9.11"
-  val woof = "0.6.0"
+  val `cps-async` = "0.9.21"
+  val woof = "0.7.0"
 }

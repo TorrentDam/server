@@ -20,10 +20,10 @@ object TorrentRegistry {
 
   type Optional[A] = OptionT[IO, A]
 
-  def apply()(implicit logger: Logger[IO]): IO[TorrentRegistry] =
-    for {
+  def apply()(using logger: Logger[IO]): IO[TorrentRegistry] =
+    for
       ref <- Ref.of[IO, Registry](emptyRegistry)
-    } yield new Impl(ref)
+    yield new Impl(ref)
 
   case class UsageCountingCell(
     get: IO[ServerTorrent.Phase.PeerDiscovery],
@@ -36,7 +36,7 @@ object TorrentRegistry {
   private type Registry = Map[InfoHash, UsageCountingCell]
   private val emptyRegistry: Registry = Map.empty
 
-  private class Impl(ref: Ref[IO, Registry])(implicit
+  private class Impl(ref: Ref[IO, Registry])(using
     logger: Logger[IO]
   ) extends TorrentRegistry {
     import Logger.withLogContext
@@ -88,7 +88,7 @@ object TorrentRegistry {
 
     def get(infoHash: InfoHash): Resource[Optional, ServerTorrent] =
       Resource {
-        for {
+        for
           torrent <- OptionT(
             ref
               .modify { registry =>
@@ -103,11 +103,11 @@ object TorrentRegistry {
               }
           )
           _ <- logger.debug(s"Found existing torrent").to[Optional]
-        } yield (torrent, release(infoHash).to[Optional])
+        yield (torrent, release(infoHash).to[Optional])
       }
 
     private def cacheReadyPhase(peerDiscovery: ServerTorrent.Phase.PeerDiscovery): IO[Unit] = {
-      for {
+      for
         fetchingMetadata <- peerDiscovery.done
         ready <- fetchingMetadata.done
         _ <- ref.update { registry =>
@@ -117,10 +117,10 @@ object TorrentRegistry {
             )
           )
         }
-      } yield ()
+      yield ()
     }
 
-    private def release(infoHash: InfoHash)(implicit logger: Logger[IO]): IO[Unit] =
+    private def release(infoHash: InfoHash)(using logger: Logger[IO]): IO[Unit] =
       logger.debug(s"Release torrent") >>
       ref
         .modify { registry =>
@@ -129,13 +129,13 @@ object TorrentRegistry {
           (registry.updated(infoHash, updatedCell), updatedCell)
         }
         .flatMap { cell =>
-          if (cell.count == 0)
+          if cell.count == 0 then
             scheduleClose(infoHash, _.usedCount == cell.usedCount)
           else
             logger.debug(s"Torrent is still in use ${cell.count}")
         }
 
-    private def scheduleClose(infoHash: InfoHash, closeIf: UsageCountingCell => Boolean)(implicit
+    private def scheduleClose(infoHash: InfoHash, closeIf: UsageCountingCell => Boolean)(using
       logger: Logger[IO]
     ): IO[Unit] = {
       val idleTimeout = 30.minutes
@@ -146,7 +146,7 @@ object TorrentRegistry {
       waitAndTry.start.void
     }
 
-    private def tryClose(infoHash: InfoHash, closeIf: UsageCountingCell => Boolean)(implicit
+    private def tryClose(infoHash: InfoHash, closeIf: UsageCountingCell => Boolean)(using
       logger: Logger[IO]
     ): IO[Unit] = {
       ref.modify { registry =>

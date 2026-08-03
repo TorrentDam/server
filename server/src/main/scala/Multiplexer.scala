@@ -14,9 +14,9 @@ object Multiplexer {
   type Result = Stream[IO, Byte]
 
   def apply(request: Int => IO[Stream[IO, Byte]])(using Logger[IO]): IO[Multiplexer] = {
-    for {
+    for
       pieces <- IO.ref(Map.empty[Int, Deferred[IO, Either[Throwable, Result]]])
-    } yield new Multiplexer {
+    yield new Multiplexer {
       def get(index: Int): IO[Stream[IO, Byte]] = {
         def cleanup =
           pieces.update { pieces =>

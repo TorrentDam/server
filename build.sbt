@@ -35,7 +35,7 @@ lazy val server = project
 lazy val commonSettings: List[Setting[_]] = List(
   organization := "io.github.torrentdam.server",
   version := sys.env.getOrElse("VERSION", "SNAPSHOT"),
-  scalaVersion := "3.7.1",
+  scalaVersion := "3.8.3",
   scalacOptions ++= List(
     "-source:future",
     "-Xkind-projector:underscores",

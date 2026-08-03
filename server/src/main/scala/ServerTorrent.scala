@@ -33,28 +33,28 @@ object ServerTorrent {
   private def create(torrent: Torrent, pieceStore: PieceStore[IO])(using Logger[IO]): IO[ServerTorrent] = {
 
     def fetch(index: Int): IO[Stream[IO, Byte]] = {
-      for {
+      for
         bytes <- pieceStore.get(index)
         bytes <- bytes match {
           case Some(bytes) => IO.pure(bytes)
           case None =>
-            for {
+            for
               bytes <- torrent.downloadPiece(index)
               bytes <- pieceStore.put(index, bytes)
-            } yield bytes
+            yield bytes
         }
-      } yield bytes
+      yield bytes
     }
 
-    for {
+    for
       multiplexer <- Multiplexer(fetch)
-    } yield {
+    yield {
       new ServerTorrent {
         def files: FileMapping = FileMapping.fromMetadata(torrent.metadata.parsed)
         def stats: IO[Stats] =
-          for {
+          for
             stats <- torrent.stats
-          } yield Stats(
+          yield Stats(
             connected = stats.connected,
             availability = files.value.map { span =>
               val range = span.beginIndex.toInt to span.endIndex.toInt
@@ -102,10 +102,10 @@ object ServerTorrent {
           _ <- Resource.eval(fetchingMetadataDone.complete(Phase.Ready(infoHash, serverTorrent)))
         yield serverTorrent
 
-      for {
+      for
         peerDiscoveryDone <- Resource.eval(FallibleDeferred[IO, Phase.FetchingMetadata])
         _ <- createInPhases(peerDiscoveryDone).useForever.background
-      } yield Phase.PeerDiscovery(peerDiscoveryDone.get)
+      yield Phase.PeerDiscovery(peerDiscoveryDone.get)
 
     end apply
   }
@@ -122,10 +122,10 @@ object ServerTorrent {
   }
 
   object FallibleDeferred {
-    def apply[F[_], A](implicit F: Concurrent[F]): F[FallibleDeferred[F, A]] = {
-      for {
+    def apply[F[_], A](using F: Concurrent[F]): F[FallibleDeferred[F, A]] = {
+      for
         underlying <- Deferred[F, Either[Throwable, A]]
-      } yield new FallibleDeferred[F, A] {
+      yield new FallibleDeferred[F, A] {
         def complete(a: A): F[Unit] = underlying.complete(a.asRight).void
         def fail(e: Throwable): F[Unit] = underlying.complete(e.asLeft).void
         def get: F[A] = underlying.get.flatMap(F.fromEither)

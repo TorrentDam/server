@@ -27,9 +27,9 @@ object PieceStore {
       Files[F].deleteDirectoryRecursively(directory)
 
     Resource.make(createDirectory)(_ => deleteDirectory).evalMap { directory =>
-      for {
+      for
         availability <- Ref.of(BitSet.empty)
-      } yield new Impl(directory, availability)
+      yield new Impl(directory, availability)
     }
   }
 
@@ -40,18 +40,18 @@ object PieceStore {
   ) extends PieceStore[F] {
 
     def get(index: Int): F[Option[Stream[F, Byte]]] =
-      for {
+      for
         availability <- availability.get
         available = availability(index)
-      } yield if (available) readFile(pieceFile(index)).some else none
+      yield if available then readFile(pieceFile(index)).some else none
 
     def put(index: Int, bytes: ByteVector): F[Stream[F, Byte]] = {
       val file = pieceFile(index)
       val byteStream = Stream.chunk[F, Byte](Chunk.byteVector(bytes))
-      for {
+      for
         _ <- Files[F].writeAll(file)(byteStream).compile.drain
         _ <- availability.update(_ + index)
-      } yield readFile(file)
+      yield readFile(file)
     }
 
     private def pieceFile(index: Int) =

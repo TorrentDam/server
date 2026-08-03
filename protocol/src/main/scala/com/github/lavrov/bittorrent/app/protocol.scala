@@ -23,13 +23,13 @@ object Message {
 
   case class TorrentStats(infoHash: InfoHash, connected: Int, availability: List[Double]) extends Event
 
-  implicit val infoHashRW: ReadWriter[InfoHash] =
-    implicitly[ReadWriter[String]].bimap(
+  given infoHashRW: ReadWriter[InfoHash] =
+    summon[ReadWriter[String]].bimap(
       infoHash => infoHash.bytes.toHex,
       string => InfoHash(ByteVector.fromValidHex(string))
     )
-  implicit val fileRW: ReadWriter[File] = macroRW
-  implicit val eventRW: ReadWriter[Message] =
+  given fileRW: ReadWriter[File] = macroRW
+  given eventRW: ReadWriter[Message] =
     ReadWriter.merge(
       macroRW[Ping.type],
       macroRW[Pong.type],

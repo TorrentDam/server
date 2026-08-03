@@ -24,7 +24,7 @@ object SocketSession {
     metadataRegistry: MetadataRegistry[IO],
     torrentIndex: TorrentIndex,
     webSocketBuilder: WebSocketBuilder[IO]       
-  )(implicit
+  )(using
     F: Concurrent[IO],
     logger: Logger[IO]
   ): IO[Response[IO]] =
@@ -49,7 +49,7 @@ object SocketSession {
     input: Queue[IO, WebSocketFrame],
     send: Message => IO[Unit],
     commandHandler: CommandHandler
-  )(implicit logger: Logger[IO]): Stream[IO, Unit] =
+  )(using logger: Logger[IO]): Stream[IO, Unit] =
     Stream.fromQueueUnterminated(input).evalMap {
       case WebSocketFrame.Text(JsonMessage(message), _) =>
         message match
@@ -72,7 +72,7 @@ object SocketSession {
     metadataRegistry: MetadataRegistry[IO],
     torrentIndex: TorrentIndex,
     supervisor: Supervisor[IO]
-  )(implicit
+  )(using
     F: Concurrent[IO],
     logger: Logger[IO]
   ) {
@@ -135,7 +135,7 @@ object SocketSession {
       makeTorrent: MakeTorrent,
       metadataRegistry: MetadataRegistry[IO],
       torrentIndex: TorrentIndex
-    )(implicit
+    )(using
       F: Concurrent[IO],
       logger: Logger[IO]
     ): Resource[IO, CommandHandler] =

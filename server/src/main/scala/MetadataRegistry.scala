@@ -24,7 +24,7 @@ object MetadataRegistry {
   case class State(map: Map[InfoHash, Lossless], list: List[(InfoHash, Lossless)]) {
 
     def put(infoHash: InfoHash, metadata: Lossless): Option[State] =
-      if (map.contains(infoHash)) none
+      if map.contains(infoHash) then none
       else State(map.updated(infoHash, metadata), (infoHash, metadata) :: list).some
 
     def get(infoHash: InfoHash): Option[Lossless] = map.get(infoHash)
@@ -37,10 +37,10 @@ object MetadataRegistry {
   }
 
   def apply[F[_]: Concurrent](): F[MetadataRegistry[F]] =
-    for {
+    for
       ref <- Ref.of[F, State](State.empty)
       topic <- Topic[F, (InfoHash, Lossless)]
-    } yield {
+    yield {
 
       new MetadataRegistry[F] {
 

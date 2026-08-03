@@ -69,7 +69,7 @@ object Main extends IOApp {
    ): Resource[IO, (TorrentRegistry, ServerTorrent.Create, TorrentIndex, MetadataRegistry[IO])] =
      async[Resource[IO, _]]{
        given Random[IO] = !Resource.eval { Random.scalaUtilRandom[IO] }
-       val selfId = !Resource.eval { PeerId.generate[IO] }
+       val selfId = !Resource.eval { PeerId.generate }
        val dhtNode = !Node(port = none, bootstrapNodeAddress = dhtBootstrapNode)
        val peerDiscovery = dhtNode.discovery
        val metadataRegistry = !Resource.eval { MetadataRegistry[IO]() }
@@ -128,7 +128,7 @@ object Main extends IOApp {
     def handleGetData(infoHash: InfoHash, fileIndex: FileIndex, rangeOpt: Option[Range]) =
       torrentRegistry.get(infoHash).allocated.value.flatMap {
         case Some((torrent: ServerTorrent, release)) =>
-          if (torrent.files.value.lift(fileIndex).isDefined) {
+          if torrent.files.value.lift(fileIndex).isDefined then {
             val file = torrent.metadata.parsed.files(fileIndex)
             val extension = file.path.lastOption.map(_.reverse.takeWhile(_ != '.').reverse)
             val fileMapping = torrent.files

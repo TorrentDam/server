@@ -1,5 +1,8 @@
 FROM eclipse-temurin:25-jre-noble
-
-COPY ./server/target/universal/stage /opt/bittorrent-server
-
-ENTRYPOINT ["/opt/bittorrent-server/bin/server", "-Dcats.effect.tracing.mode=none", "-J-XX:+UnlockExperimentalVMOptions", "-J-XX:+UseCompactObjectHeaders"]
+COPY ./out/server/assembly.dest/out.jar /opt/torrentdam/server.jar
+ENTRYPOINT ["java", \
+            "-Dcats.effect.tracing.mode=none", \
+            "-XX:+UnlockExperimentalVMOptions", \
+            "-XX:+UseCompactObjectHeaders", \
+            "-jar", \
+            "/opt/torrentdam/server.jar"]

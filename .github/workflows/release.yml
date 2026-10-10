@@ -1,32 +1,21 @@
 name: release
-
 on:
   push:
     tags:
       - 'v*'
-
 jobs:
-
   release:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
-
-      - uses: actions/checkout@v1
-
-      - name: Set up java
-        uses: actions/setup-java@v2.1.0
-        with:
-          distribution: adopt
-          java-version: 17
-          java-package: jre
-
-      - name: Publish
+      - uses: actions/checkout@v3
+      - name: Release
         env:
-          SONATYPE_CREDS: ${{ secrets.SONATYPE_CREDS }}
-          PGP_SECRET_KEY: ${{ secrets.PGP_SECRET_KEY }}
+          MILL_SONATYPE_USERNAME: ${{ secrets.MILL_SONATYPE_USERNAME }}
+          MILL_SONATYPE_PASSWORD: ${{ secrets.MILL_SONATYPE_PASSWORD }}
+          MILL_PGP_SECRET_BASE64: ${{ secrets.MILL_PGP_SECRET_BASE64 }}
+          MILL_PGP_PASSPHRASE: ${{ secrets.MILL_PGP_PASSPHRASE }}
         run: |
-          echo ${PGP_SECRET_KEY} | base64 --decode | gpg --import
-          export VERSION=${GITHUB_REF#*/v} 
+          export VERSION=${GITHUB_REF#*/v}
           echo Publishing $VERSION
-          sbt protocolJS/publishSigned
+          ./mill mill.javalib.SonatypeCentralPublishModule/

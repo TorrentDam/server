@@ -9,7 +9,6 @@ import com.github.torrentdam.bittorrent.TorrentMetadata.Lossless
 import com.github.torrentdam.bittorrent.dht.PeerDiscovery
 import fs2.Stream
 import fs2.concurrent.Signal
-import org.http4s.Uri
 import org.legogroup.woof.{Logger, given}
 
 trait ServerTorrent {

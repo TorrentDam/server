@@ -1,16 +1,15 @@
-import cats.effect.kernel.Deferred
 import cats.effect.{Concurrent, IO, Resource}
-import cats.effect.std.Queue
 import cats.effect.std.Supervisor
 import cats.implicits.*
 import com.github.torrentdam.bittorrent.InfoHash
 import com.github.lavrov.bittorrent.app.protocol
 import com.github.lavrov.bittorrent.app.protocol.{Message, Event, Command}
-import fs2.Stream
 import org.legogroup.woof.{Logger, given}
-import org.http4s.Response
-import org.http4s.server.websocket.WebSocketBuilder
-import org.http4s.websocket.WebSocketFrame
+import zio.http.{ChannelEvent, Handler, WebSocketApp, WebSocketFrame}
+import zio.interop.catz.implicits.rts
+import zio.interop.ToEffectSyntax
+import zio.interop.fromEffect
+import zio.ZIO
 import cps.*
 import cps.syntax.*
 import cps.monads.catsEffect.{*, given}
@@ -23,45 +22,55 @@ object SocketSession {
   def apply(
     makeTorrent: MakeTorrent,
     metadataRegistry: MetadataRegistry[IO],
-    torrentIndex: TorrentIndex,
-    webSocketBuilder: WebSocketBuilder[IO]
+    torrentIndex: TorrentIndex
   )(using
     F: Concurrent[IO],
+    dispatcher: cats.effect.std.Dispatcher[IO],
     logger: Logger[IO]
-  ): IO[Response[IO]] =
-    for
-      _ <- logger.info("Session started")
-      input <- Queue.unbounded[IO, WebSocketFrame]
-      output <- Queue.unbounded[IO, WebSocketFrame]
-      send = (str: String) => output.offer(WebSocketFrame.Text(str))
-      sendMessage = (m: Message) => send(upickle.default.write(m))
-      (handler, closeHandler) <- CommandHandler(sendMessage, makeTorrent, metadataRegistry, torrentIndex).allocated
-      fiber <- processor(input, sendMessage, handler).compile.drain.start
-      pingFiber <- (IO.sleep(10.seconds) >> input.offer(WebSocketFrame.Ping())).foreverM.start
-      response <- webSocketBuilder
-        .withOnClose(fiber.cancel >> pingFiber.cancel >> closeHandler >> logger.info("Session closed"))
-        .build(
-          Stream.fromQueueUnterminated(output),
-          _.evalMap(input.offer),
-        )
-    yield response
-
-  private def processor(
-    input: Queue[IO, WebSocketFrame],
-    send: Message => IO[Unit],
-    commandHandler: CommandHandler
-  )(using logger: Logger[IO]): Stream[IO, Unit] =
-    Stream.fromQueueUnterminated(input).evalMap {
-      case WebSocketFrame.Text(JsonMessage(message), _) =>
-        message match
+  ): WebSocketApp[Any] =
+    Handler.webSocket { channel =>
+      val send: Message => ZIO[Any, Nothing, Unit] = { message =>
+        channel
+          .send(ChannelEvent.Read(WebSocketFrame.Text(upickle.default.write(message))))
+          .catchAll(_ => ZIO.unit)
+      }
+      val sendEvent: Event => IO[Unit] = { event =>
+        send(event).toEffect[IO]
+      }
+      val allocatedIO: IO[(CommandHandler, IO[Unit])] =
+        CommandHandler(sendEvent, makeTorrent, metadataRegistry, torrentIndex).allocated
+      fromEffect(logger.info("Session started")) *> fromEffect(allocatedIO).flatMap { allocated =>
+        val handler = allocated._1
+        val closeHandler = allocated._2
+        def process: Message => ZIO[Any, Nothing, Unit] = {
           case Message.Ping =>
             send(Message.Pong)
-          case command: Command => async[IO] {
-            !logger.debug(s"Received $command")
-            !commandHandler.handle(command)
+          case command: Command =>
+            fromEffect {
+              async[IO] {
+                !logger.debug(s"Received $command")
+                !handler.handle(command)
+              }
+            }.catchAll(_ => ZIO.unit)
+          case _ =>
+            ZIO.unit
+        }
+        val receiveLoop = channel.receiveAll {
+          case ChannelEvent.Read(WebSocketFrame.Text(text)) =>
+            JsonMessage.lift(text).map(process).getOrElse(ZIO.unit)
+          case _ =>
+            ZIO.unit
+        }
+        val pingLoop = ZIO.sleep(zio.Duration.fromScala(10.seconds)) *>
+          channel.send(ChannelEvent.Read(WebSocketFrame.Ping)).catchAll(_ => ZIO.unit)
+        receiveLoop
+          .zipPar(pingLoop.forever)
+          .ensuring {
+            fromEffect {
+              closeHandler *> logger.info("Session closed")
+            }.catchAll(_ => ZIO.unit)
           }
-          case _ => IO.unit
-      case _ => IO.unit
+      }
     }
 
   private val JsonMessage: PartialFunction[String, Message] =

@@ -1,63 +1,53 @@
-import java.nio.file.Path
-
-import cats.implicits.*
-import cats.effect.kernel.Ref
-import cats.effect.{Concurrent, Resource, Async}
-import fs2.{Stream, Chunk}
-import fs2.io.file.Files
+import java.nio.file.{Files as JFiles, Path}
 import scodec.bits.ByteVector
+import zio.{Chunk, Ref, Scope, Task, ZIO}
 
-import scala.collection.immutable.BitSet
-import scala.jdk.StreamConverters.*
+import java.nio.file.StandardOpenOption.*
 
-trait PieceStore[F[_]] {
-  def get(index: Int): F[Option[Stream[F, Byte]]]
-  def put(index: Int, bytes: ByteVector): F[Stream[F, Byte]]
+trait PieceStore {
+  def get(index: Int): Task[Option[Chunk[Byte]]]
+  def put(index: Int, bytes: ByteVector): Task[Chunk[Byte]]
 }
 
 object PieceStore {
-  def disk[F[_]](
-    directory: Path
-  )(using Files[F], Concurrent[F]): Resource[F, PieceStore[F]] = {
 
-    val createDirectory =
-      Files[F].createDirectories(directory)
+  def disk(directory: Path): ZIO[Scope, Throwable, PieceStore] =
+    for
+      _ <- ZIO.attempt(JFiles.createDirectories(directory))
+      _ <- ZIO.addFinalizer {
+        ZIO.attempt {
+          JFiles.walk(directory).sorted(java.util.Comparator.reverseOrder[Path]()).forEach(p => JFiles.deleteIfExists(p))
+        }.ignore
+      }
+      availability <- Ref.make(Set.empty[Int])
+    yield Impl(directory, availability)
 
-    val deleteDirectory =
-      Files[F].deleteDirectoryRecursively(directory)
-
-    Resource.make(createDirectory)(_ => deleteDirectory).evalMap { directory =>
+  private case class Impl(directory: Path, availability: Ref[Set[Int]]) extends PieceStore {
+    def get(index: Int): Task[Option[Chunk[Byte]]] =
       for
-        availability <- Ref.of(BitSet.empty)
-      yield new Impl(directory, availability)
-    }
-  }
+        available <- availability.get
+        result <- if available(index) then
+          ZIO
+            .attempt(pieceFile(index))
+            .flatMap(file =>
+              ZIO
+                .attempt(JFiles.readAllBytes(file))
+                .map(bytes => Some(Chunk.fromArray(bytes)))
+            )
+        else ZIO.succeed(None)
+      yield result
 
-  private class Impl[F[_]](directory: Path, availability: Ref[F, BitSet])(
-    using
-    Files[F],
-    Concurrent[F],
-  ) extends PieceStore[F] {
-
-    def get(index: Int): F[Option[Stream[F, Byte]]] =
+    def put(index: Int, bytes: ByteVector): Task[Chunk[Byte]] =
+      val chunk = Chunk.fromArray(bytes.toArray)
       for
-        availability <- availability.get
-        available = availability(index)
-      yield if available then readFile(pieceFile(index)).some else none
-
-    def put(index: Int, bytes: ByteVector): F[Stream[F, Byte]] = {
-      val file = pieceFile(index)
-      val byteStream = Stream.chunk[F, Byte](Chunk.byteVector(bytes))
-      for
-        _ <- Files[F].writeAll(file)(byteStream).compile.drain
+        _ <- ZIO.attempt {
+          val file = pieceFile(index)
+          JFiles.write(file, bytes.toArray, CREATE, TRUNCATE_EXISTING, WRITE)
+        }
         _ <- availability.update(_ + index)
-      yield readFile(file)
-    }
+      yield chunk
 
     private def pieceFile(index: Int) =
       directory.resolve(index.toString)
-
-    private def readFile(file: Path) =
-      Files[F].readAll(file, 1024 * 1024)
   }
 }

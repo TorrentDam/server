@@ -10,7 +10,7 @@ final case class InfoHash(bytes: ByteVector) {
 object InfoHash {
 
   def fromString(source: String): Option[InfoHash] =
-    ByteVector.fromHex(source).toOption
+    ByteVector.fromHex(source)
       .filter(_.length == 20)
       .map(InfoHash.apply)
 }

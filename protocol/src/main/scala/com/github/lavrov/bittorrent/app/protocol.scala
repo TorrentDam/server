@@ -1,8 +1,19 @@
 package com.github.lavrov.bittorrent.app.protocol
 
-import com.github.torrentdam.bittorrent.InfoHash
 import scodec.bits.ByteVector
 import upickle.default.{macroRW, ReadWriter}
+
+final case class InfoHash(bytes: ByteVector) {
+  override def toString: String = bytes.toHex
+}
+
+object InfoHash {
+
+  def fromString(source: String): Option[InfoHash] =
+    ByteVector.fromHex(source).toOption
+      .filter(_.length == 20)
+      .map(InfoHash.apply)
+}
 
 sealed trait Message
 sealed trait Command extends Message

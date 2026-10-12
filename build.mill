@@ -1,17 +1,30 @@
 //| mill-version: 1.1.8
 //| mill-jvm-version: temurin:21.0.6
-import mill.*, scalalib.*, publish.*
+import mill.*, scalalib.*, scalajslib.*, publish.*
 
-object protocol extends CommonSettings {
-  def mvnDeps = Seq(
-    Deps.bittorrent.common,
-    Deps.upickle,
-    Deps.`scodec-bits`,
-  )
+object protocol extends Module {
+  object jvm extends CommonSettings, PlatformScalaModule {
+    override def scalaVersion = "3.3.6"
+    def mvnDeps = Seq(
+      Deps.upickle,
+      Deps.`scodec-bits`,
+    )
+  }
+  object js extends CommonSettings, ScalaJSModule, PlatformScalaModule {
+    override def scalaVersion = "3.3.6"
+    def scalaJSVersion = "1.20.1"
+    def mvnDeps = Seq(
+      Deps.upickle,
+      Deps.`scodec-bits`,
+    )
+  }
 }
 
 object server extends CommonSettings {
-  def moduleDeps = Seq(protocol)
+  def moduleDeps = Seq(protocol.jvm)
+  def scalacOptions = Seq(
+    "-Xkind-projector:underscores",
+  )
   def mvnDeps = Seq(
     Deps.bittorrent.bittorrent,
     Deps.bittorrent.dht,
@@ -31,7 +44,6 @@ trait CommonSettings extends ScalaModule, PublishModule {
   def scalaVersion = "3.8.3"
   def scalacOptions = Seq(
     "-source:future",
-    "-Xkind-projector:underscores",
   )
   def sources = Task.Sources(
     moduleDir / "src" / "main" / "scala"

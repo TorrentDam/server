@@ -4,6 +4,7 @@ import cats.effect.std.Queue
 import cats.effect.std.Supervisor
 import cats.implicits.*
 import com.github.torrentdam.bittorrent.InfoHash
+import com.github.lavrov.bittorrent.app.protocol
 import com.github.lavrov.bittorrent.app.protocol.{Message, Event, Command}
 import fs2.Stream
 import org.legogroup.woof.{Logger, given}
@@ -23,7 +24,7 @@ object SocketSession {
     makeTorrent: MakeTorrent,
     metadataRegistry: MetadataRegistry[IO],
     torrentIndex: TorrentIndex,
-    webSocketBuilder: WebSocketBuilder[IO]       
+    webSocketBuilder: WebSocketBuilder[IO]
   )(using
     F: Concurrent[IO],
     logger: Logger[IO]
@@ -86,6 +87,7 @@ object SocketSession {
           yield ()
 
     private def handleRequestTorrent(infoHash: InfoHash, trackers: List[String]): IO[Unit] =
+      val messageInfoHash = protocol.InfoHash(infoHash.bytes)
       supervisor.supervise(
         makeTorrent(infoHash, trackers)
           .use { getTorrent =>
@@ -96,7 +98,7 @@ object SocketSession {
               .flatMap { (phase: ServerTorrent.Phase.FetchingMetadata) =>
                 phase.fromPeers.discrete
                   .evalTap { count =>
-                    send(Message.TorrentPeersDiscovered(infoHash, count))
+                    send(Message.TorrentPeersDiscovered(messageInfoHash, count))
                   }
                   .interruptWhen(phase.done.void.attempt)
                   .compile
@@ -106,20 +108,20 @@ object SocketSession {
               .flatMap { (phase: ServerTorrent.Phase.Ready) =>
                 val metadata = phase.serverTorrent.metadata.parsed
                 val files = metadata.files.map(f => Message.File(f.path, f.length))
-                send(Message.TorrentMetadataReceived(infoHash, metadata.name, files)) >>
+                send(Message.TorrentMetadataReceived(messageInfoHash, metadata.name, files)) >>
                 phase.serverTorrent.pure[IO]
               }
               .timeout(5.minutes)
               .flatMap { torrent =>
-                sendTorrentStats(infoHash, torrent)
+                sendTorrentStats(messageInfoHash, torrent)
               }
           }
           .orElse {
-            send(Message.TorrentError(infoHash, "Could not fetch metadata"))
+            send(Message.TorrentError(messageInfoHash, "Could not fetch metadata"))
           }
       ).void
 
-    private def sendTorrentStats(infoHash: InfoHash, torrent: ServerTorrent): IO[Nothing] =
+    private def sendTorrentStats(infoHash: protocol.InfoHash, torrent: ServerTorrent): IO[Nothing] =
       val sendStats =
         for
           stats <- torrent.stats
@@ -150,7 +152,7 @@ object SocketSession {
           supervisor
         )
   }
-  
+
   trait MakeTorrent {
     def apply(infoHash: InfoHash, trackers: List[String]): Resource[IO, IO[ServerTorrent.Phase.PeerDiscovery]]
   }

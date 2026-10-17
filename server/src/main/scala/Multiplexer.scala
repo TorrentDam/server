@@ -1,54 +1,53 @@
-import cats.effect.{Async, IO}
-import cats.effect.kernel.{Deferred, Ref}
-import cats.implicits.*
-import cats.effect.implicits.*
-import fs2.Stream
-import org.legogroup.woof.{Logger, given}
+import zio.{Chunk, Promise, Ref, Task, UIO, ZIO}
+import zio.stream.ZStream
 
 trait Multiplexer {
-  def get(index: Int): IO[Multiplexer.Result]
+  def get(index: Int): Task[ZStream[Any, Throwable, Byte]]
 }
 
 object Multiplexer {
 
-  type Result = Stream[IO, Byte]
-
-  def apply(request: Int => IO[Stream[IO, Byte]])(using Logger[IO]): IO[Multiplexer] = {
+  def apply(request: Int => Task[Chunk[Byte]]): UIO[Multiplexer] =
     for
-      pieces <- IO.ref(Map.empty[Int, Deferred[IO, Either[Throwable, Result]]])
-    yield new Multiplexer {
-      def get(index: Int): IO[Stream[IO, Byte]] = {
-        def cleanup =
-          pieces.update { pieces =>
-            pieces.removed(index)
-          }
-        def requestAndCache = IO.uncancelable { _ =>
-          for
-            (deferred, effect) <- pieces.modify { pieces =>
-            pieces.get(index) match
-              case Some(deferred) => (pieces, (deferred, IO.unit))
-              case _ =>
-                val deferred = Deferred.unsafe[IO, Either[Throwable, Result]]
-                val updated = pieces.updated(index, deferred)
-                val effect =
-                  request(index)
-                    .attempt
-                    .flatTap(deferred.complete)
-                    .onError(e => Logger[IO].error(s"Could not download piece $index: ${e.getMessage}"))
-                    .guarantee(cleanup)
-                    .start
-                    .void
-                (updated, (deferred, effect))
-            }
-            _ <- effect
-          yield deferred
-        }
+      pieces <- Ref.make(Map.empty[Int, Promise[Throwable, Chunk[Byte]]])
+    yield new Impl(pieces, request)
+
+  private class Impl(
+    pieces: Ref[Map[Int, Promise[Throwable, Chunk[Byte]]]],
+    request: Int => Task[Chunk[Byte]]
+  ) extends Multiplexer {
+
+    def get(index: Int): Task[ZStream[Any, Throwable, Byte]] =
+      for
+        deferred <- requestAndCache(index)
+        result <- deferred.await
+      yield ZStream.fromChunk(result)
+
+    private def requestAndCache(index: Int): Task[Promise[Throwable, Chunk[Byte]]] =
+      ZIO.uninterruptibleMask { restore =>
         for
-          deferred <- requestAndCache
-          result <- deferred.get
-          byteStream <- IO.fromEither(result)
-        yield byteStream
+          existing <- pieces.get
+          result <- existing.get(index) match
+            case Some(deferred) => ZIO.succeed(deferred)
+            case None =>
+              for
+                deferred <- Promise.make[Throwable, Chunk[Byte]]
+                _ <- pieces.update(_.updated(index, deferred))
+                _ <- restore(
+                  request(index)
+                    .tapBoth(
+                      error => deferred.fail(error),
+                      chunk => deferred.succeed(chunk)
+                    )
+                    .ignore
+                    .forkDaemon
+                )
+                _ <- ensureCleanup(index)
+              yield deferred
+        yield result
       }
-    }
+
+    private def ensureCleanup(index: Int): UIO[Unit] =
+      pieces.update(_.removed(index))
   }
 }

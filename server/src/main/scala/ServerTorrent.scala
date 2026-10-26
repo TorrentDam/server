@@ -1,21 +1,20 @@
 import java.nio.file.Paths
-import ServerTorrent.Phase.FetchingMetadata
+import cats.effect.IO
+import cats.effect.std.Dispatcher
 import cats.syntax.all.*
-import cats.effect.kernel.{Deferred, Resource}
-import cats.effect.{Concurrent, IO, Resource}
-import com.github.torrentdam.bittorrent.{FileMapping, InfoHash, MagnetLink, PeerInfo}
+import com.github.torrentdam.bittorrent.{FileMapping, InfoHash, PeerInfo}
 import com.github.torrentdam.bittorrent.wire.{Connection, DownloadMetadata, Swarm, Torrent}
 import com.github.torrentdam.bittorrent.TorrentMetadata.Lossless
-import com.github.torrentdam.bittorrent.dht.PeerDiscovery
-import fs2.Stream
-import fs2.concurrent.Signal
-import org.http4s.Uri
 import org.legogroup.woof.{Logger, given}
+import zio.stream.ZStream
+import zio.stream.interop.fs2z.*
+import zio.interop.fromEffect
+import zio.{Chunk, Promise, Scope, Task, UIO, ZIO}
 
 trait ServerTorrent {
   def files: FileMapping
-  def stats: IO[ServerTorrent.Stats]
-  def piece(index: Int): IO[Stream[IO, Byte]]
+  def stats: Task[ServerTorrent.Stats]
+  def piece(index: Int): Task[ZStream[Any, Throwable, Byte]]
   def metadata: Lossless
 }
 
@@ -23,38 +22,25 @@ object ServerTorrent {
 
   sealed trait Phase
   object Phase {
-    case class PeerDiscovery(done: IO[FetchingMetadata]) extends Phase
-    case class FetchingMetadata(fromPeers: Signal[IO, Int], done: IO[Ready]) extends Phase
+    case class PeerDiscovery(done: Task[FetchingMetadata]) extends Phase
+    case class FetchingMetadata(fromPeers: ZStream[Any, Nothing, Int], done: Task[Ready]) extends Phase
     case class Ready(infoHash: InfoHash, serverTorrent: ServerTorrent) extends Phase
   }
 
   case class Error() extends Throwable
 
-  private def create(torrent: Torrent, pieceStore: PieceStore[IO])(using Logger[IO]): IO[ServerTorrent] = {
-
-    def fetch(index: Int): IO[Stream[IO, Byte]] = {
-      for
-        bytes <- pieceStore.get(index)
-        bytes <- bytes match {
-          case Some(bytes) => IO.pure(bytes)
-          case None =>
-            for
-              bytes <- torrent.downloadPiece(index)
-              bytes <- pieceStore.put(index, bytes)
-            yield bytes
-        }
-      yield bytes
-    }
-
+  private def create(
+    torrentStats: Task[Torrent.Stats],
+    downloadPiece: Int => Task[Chunk[Byte]],
+    selfMetadata: Lossless
+  ): UIO[ServerTorrent] =
     for
-      multiplexer <- Multiplexer(fetch)
-    yield {
-      new ServerTorrent {
-        def files: FileMapping = FileMapping.fromMetadata(torrent.metadata.parsed)
-        def stats: IO[Stats] =
-          for
-            stats <- torrent.stats
-          yield Stats(
+      multiplexer <- Multiplexer(downloadPiece)
+    yield new ServerTorrent {
+      def files: FileMapping = FileMapping.fromMetadata(metadata.parsed)
+      def stats: Task[Stats] =
+        torrentStats.map { stats =>
+          Stats(
             connected = stats.connected,
             availability = files.value.map { span =>
               val range = span.beginIndex.toInt to span.endIndex.toInt
@@ -62,75 +48,74 @@ object ServerTorrent {
               available.toDouble / range.size
             }
           )
-        def piece(index: Int): IO[Stream[IO, Byte]] = multiplexer.get(index)
-        def metadata: Lossless = torrent.metadata
-      }
+        }
+      def piece(index: Int): Task[ZStream[Any, Throwable, Byte]] = multiplexer.get(index)
+      def metadata: Lossless = selfMetadata
     }
-  }
 
   class Create(
-    connect: InfoHash => PeerInfo => Resource[IO, Connection],
-    peerDiscovery: PeerDiscovery,
-    metadataRegistry: MetadataRegistry[IO]
-  )(
-    using
-    logger: Logger[IO],
+    connect: InfoHash => PeerInfo => cats.effect.Resource[IO, Connection],
+    peerDiscovery: com.github.torrentdam.bittorrent.dht.PeerDiscovery,
+    metadataRegistry: MetadataRegistry
+  )(using
+    Dispatcher[IO],
+    Logger[IO]
   ) {
-
-    def apply(infoHash: InfoHash, trackers: List[String]): Resource[IO, Phase.PeerDiscovery] =
-
-      def createInPhases(peerDiscoveryOutcome: FallibleDeferred[IO, Phase.FetchingMetadata]): Resource[IO, ServerTorrent] =
-        for
-          swarm <- Swarm(
-            peerDiscovery.discover(infoHash),
-            connect(infoHash),
-          )
-          fetchingMetadataDone <- Resource.eval(FallibleDeferred[IO, Phase.Ready])
-          _ <- Resource.eval(
-            peerDiscoveryOutcome.complete(FetchingMetadata(swarm.connected.count, fetchingMetadataDone.get))
-          )
-          metadata <- Resource.eval(
-            metadataRegistry.get(infoHash).flatMap {
-              case Some(value) => value.pure[IO]
-              case None => DownloadMetadata(swarm).flatTap(metadataRegistry.put(infoHash, _))
-            }
-          )
-          _ <- Resource.eval(logger.info(s"Metadata downloaded"))
-          torrent <- Torrent.make(metadata, swarm)
-          pieceStore <- PieceStore.disk[IO](Paths.get(s"/tmp", s"bittorrent-${infoHash.toString}"))
-          serverTorrent <- Resource.eval(create(torrent, pieceStore))
-          _ <- Resource.eval(fetchingMetadataDone.complete(Phase.Ready(infoHash, serverTorrent)))
-        yield serverTorrent
-
+    def apply(infoHash: InfoHash, trackers: List[String]): ZIO[Scope, Throwable, Phase.PeerDiscovery] =
       for
-        peerDiscoveryDone <- Resource.eval(FallibleDeferred[IO, Phase.FetchingMetadata])
-        _ <- createInPhases(peerDiscoveryDone).useForever.background
-      yield Phase.PeerDiscovery(peerDiscoveryDone.get)
+        peerDiscoveryDone <- Promise.make[Throwable, Phase.FetchingMetadata]
+        fiber <- createInPhases(peerDiscoveryDone, infoHash).forkDaemon
+      yield Phase.PeerDiscovery(peerDiscoveryDone.await)
 
-    end apply
+    private def createInPhases(
+      peerDiscoveryOutcome: Promise[Throwable, Phase.FetchingMetadata],
+      infoHash: InfoHash
+    ): ZIO[Any, Throwable, Unit] =
+      ZIO.scoped {
+        for
+          swarm <- Interop.acquireCats {
+            Swarm(
+              peerDiscovery.discover(infoHash).covary[IO],
+              connect(infoHash)
+            )
+          }
+          fetchingMetadataDone <- Promise.make[Throwable, Phase.Ready]
+          countSignal: fs2.concurrent.Signal[cats.effect.IO, Int] = swarm.connected.count
+          fromPeersZ = countSignal.continuous.translate(Interop.ioToRIO).toZStream()
+          _ <- peerDiscoveryOutcome.succeed(
+            Phase.FetchingMetadata(fromPeersZ.catchAll(_ => ZStream.empty), fetchingMetadataDone.await)
+          )
+          metadata <- metadataRegistry.get(infoHash).flatMap {
+            case Some(value) => ZIO.succeed(value)
+            case None        => fromEffect(DownloadMetadata(swarm))
+          }
+          _ <- fromEffect(summon[Logger[IO]].info(s"Metadata downloaded"))
+          _ <- metadataRegistry.put(infoHash, metadata)
+          torrent <- Interop.acquireCats(Torrent.make(metadata, swarm))
+          pieceStore <- PieceStore.disk(Paths.get("/tmp", s"bittorrent-${infoHash.toString}"))
+          serverTorrent <- create(
+            fromEffect(torrent.stats),
+            index => fetchPiece(torrent, pieceStore, index),
+            metadata
+          )
+          _ <- fetchingMetadataDone.succeed(Phase.Ready(infoHash, serverTorrent))
+        yield ()
+      }
+
+    private def fetchPiece(torrent: Torrent, pieceStore: PieceStore, index: Int): Task[Chunk[Byte]] =
+      for
+        cached <- pieceStore.get(index)
+        result <- cached match
+          case Some(bytes) => ZIO.succeed(bytes)
+          case None =>
+            fromEffect(torrent.downloadPiece(index.toLong)).flatMap { vector =>
+              pieceStore.put(index, vector).map(_ => Chunk.fromArray(vector.toArray))
+            }
+      yield result
   }
 
   case class Stats(
     connected: Int,
     availability: List[Double]
   )
-
-  trait FallibleDeferred[F[_], A] {
-    def complete(a: A): F[Unit]
-    def fail(e: Throwable): F[Unit]
-    def get: F[A]
-  }
-
-  object FallibleDeferred {
-    def apply[F[_], A](using F: Concurrent[F]): F[FallibleDeferred[F, A]] = {
-      for
-        underlying <- Deferred[F, Either[Throwable, A]]
-      yield new FallibleDeferred[F, A] {
-        def complete(a: A): F[Unit] = underlying.complete(a.asRight).void
-        def fail(e: Throwable): F[Unit] = underlying.complete(e.asLeft).void
-        def get: F[A] = underlying.get.flatMap(F.fromEither)
-      }
-    }
-  }
-
 }

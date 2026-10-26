@@ -30,10 +30,9 @@ object server extends CommonSettings {
     Deps.bittorrent.dht,
     Deps.`cats-effect`,
     Deps.`fs2-io`,
-    Deps.http4s.core,
-    Deps.http4s.dsl,
-    Deps.http4s.server,
-    Deps.http4s.client,
+    Deps.`zio-http`,
+    Deps.`zio-interop-cats`,
+    Deps.`ip4s-core`,
     Deps.`woof-core`,
     Deps.`woof-slf4j`,
     Deps.`cats-effect-cps`,
@@ -71,7 +70,10 @@ object Deps {
     val fs2 = "3.12.2"
     val `scodec-bits` = "1.2.4"
     val upickle = "2.0.0"
-    val http4s = "1.0.0-M40"
+    val `zio-http` = "3.11.2"
+    val zio = "2.1.26"
+    val `zio-interop-cats` = "23.1.0.14"
+    val `ip4s-core` = "3.8.0"
     val `cats-effect-cps` = "0.9.21"
     val woof = "0.9.0"
   }
@@ -85,12 +87,9 @@ object Deps {
   val `fs2-io` = mvn"co.fs2::fs2-io::${Versions.fs2}"
   val `scodec-bits` = mvn"org.scodec::scodec-bits::${Versions.`scodec-bits`}"
   val upickle = mvn"com.lihaoyi::upickle::${Versions.upickle}"
-  object http4s {
-    val core = mvn"org.http4s::http4s-core::${Versions.http4s}"
-    val dsl = mvn"org.http4s::http4s-dsl::${Versions.http4s}"
-    val server = mvn"org.http4s::http4s-ember-server::${Versions.http4s}"
-    val client = mvn"org.http4s::http4s-ember-client::${Versions.http4s}"
-  }
+  val `zio-http` = mvn"dev.zio::zio-http::${Versions.`zio-http`}"
+  val `zio-interop-cats` = mvn"dev.zio::zio-interop-cats::${Versions.`zio-interop-cats`}"
+  val `ip4s-core` = mvn"com.comcast::ip4s-core::${Versions.`ip4s-core`}"
   val `cats-effect-cps` = mvn"com.github.rssh::cps-async-connect-cats-effect::${Versions.`cats-effect-cps`}"
   val `woof-core` = mvn"org.legogroup::woof-core::${Versions.woof}"
   val `woof-slf4j` = mvn"org.legogroup::woof-slf4j::${Versions.woof}"

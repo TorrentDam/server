@@ -89,7 +89,7 @@ object ServerTorrent {
             case Some(value) => ZIO.succeed(value)
             case None        => fromEffect(DownloadMetadata(swarm))
           }
-          _ <- fromEffect(summon[Logger[IO]].info(s"Metadata downloaded"))
+          _ <- ZIO.logInfo(s"Metadata downloaded")
           _ <- metadataRegistry.put(infoHash, metadata)
           torrent <- Interop.acquireCats(Torrent.make(metadata, swarm))
           pieceStore <- PieceStore.disk(Paths.get("/tmp", s"bittorrent-${infoHash.toString}"))

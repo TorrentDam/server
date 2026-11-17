@@ -16,8 +16,7 @@ import sun.misc.Signal
 import zio.http.*
 import zio.http.codec.PathCodec.{int, string}
 import zio.interop.fromEffect
-import zio.stream.interop.fs2z.*
-import zio.{Chunk, RIO, Scope, Task, ZIO, ZIOAppArgs, ZIOAppDefault, durationInt}
+import zio.{Chunk, Scope, Task, ZIO, ZIOAppArgs, ZIOAppDefault, durationInt}
 import zio.stream.ZStream
 import zio.Duration as ZDuration
 
@@ -32,7 +31,7 @@ object Main extends ZIOAppDefault {
     for
       args <- getArgs.map(_.toList)
       (dhtEnabled, dhtBootstrapNode) = parseArgs(args)
-      dispatcher <- acquireDispatcher
+      dispatcher <- Interop.acquireDispatcher
       given Dispatcher[IO] = dispatcher
       logger <- fromEffect(mkLogger)
       given Logger[IO] = logger
@@ -42,13 +41,6 @@ object Main extends ZIOAppDefault {
       routes <- makeRoutes(dhtEnabled, dhtBootstrapNode)
       _ <- Server.serve(routes).provide(Server.defaultWithPort(bindPort))
     yield ()
-
-  def acquireDispatcher: ZIO[Scope, Nothing, Dispatcher[IO]] =
-    ZIO.acquireReleaseExit {
-      ZIO.succeed(Dispatcher.sequential[IO].allocated.unsafeRunSync()(using cats.effect.unsafe.IORuntime.global))
-    } { case ((_, release), _) =>
-      ZIO.succeed(release.unsafeRunAndForget()(using cats.effect.unsafe.IORuntime.global))
-    }.map(_._1)
 
   def parseArgs(args: List[String]): (Boolean, Option[SocketAddress[Host]]) =
     val argv = args.filter(_ != "--")
@@ -212,9 +204,7 @@ object Main extends ZIOAppDefault {
         },
       )
 
-  def responseBody(torrent: ServerTorrent, span: FileMapping.FileSpan, contentLength: Long)(using
-    Dispatcher[IO]
-  ): Body =
+  def responseBody(torrent: ServerTorrent, span: FileMapping.FileSpan, contentLength: Long): Body =
     val parallelPieces =
       scala.math.max(maxPrefetchBytes / torrent.metadata.parsed.pieceLength, 2).toInt
     val dataStream =

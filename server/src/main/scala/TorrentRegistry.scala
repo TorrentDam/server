@@ -26,7 +26,6 @@ object TorrentRegistry {
     yield Impl(ref)
 
   private class Impl(ref: Ref[Map[InfoHash, UsageCountingCell]]) extends TorrentRegistry {
-    import zio.interop.catz.implicits.rts
 
     def getOrCreate(
       infoHash: InfoHash

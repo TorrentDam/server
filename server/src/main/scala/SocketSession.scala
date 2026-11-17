@@ -1,11 +1,7 @@
-import cats.effect.std.Dispatcher
 import com.github.torrentdam.bittorrent.InfoHash
 import com.github.lavrov.bittorrent.app.protocol
 import com.github.lavrov.bittorrent.app.protocol.{Message, Event, Command}
-import org.legogroup.woof.{Logger, given}
 import zio.http.{ChannelEvent, Handler, WebSocketApp, WebSocketFrame}
-import zio.interop.catz.implicits.rts
-import zio.interop.{fromEffect, ToEffectSyntax}
 import zio.{Scope, Task, UIO, ZIO, durationInt}
 import zio.Duration as ZDuration
 
@@ -18,9 +14,6 @@ object SocketSession {
     makeTorrent: MakeTorrent,
     metadataRegistry: MetadataRegistry,
     torrentIndex: TorrentIndex
-  )(using
-    dispatcher: Dispatcher[cats.effect.IO],
-    logger: Logger[cats.effect.IO]
   ): WebSocketApp[Any] =
     Handler.webSocket { channel =>
       val send: Message => UIO[Unit] = { message =>
@@ -28,18 +21,12 @@ object SocketSession {
           .send(ChannelEvent.Read(WebSocketFrame.Text(upickle.default.write(message))))
           .catchAll(_ => ZIO.unit)
       }
-      val sendEvent: Event => cats.effect.IO[Unit] = { event =>
-        send(event).toEffect[cats.effect.IO]
-      }
       val process: Message => UIO[Unit] = {
         case Message.Ping =>
           send(Message.Pong)
         case command: Command =>
-          fromEffect {
-            summon[Logger[cats.effect.IO]].debug(s"Received $command")
-          }
-            .catchAll(_ => ZIO.unit) *>
-            handleCommand(command, makeTorrent, sendEvent)
+          ZIO.logDebug(s"Received $command") *>
+            handleCommand(command, makeTorrent, send)
         case _ =>
           ZIO.unit
       }
@@ -51,29 +38,28 @@ object SocketSession {
       }
       val pingLoop = ZIO.sleep(ZDuration.fromScala(10.seconds)) *>
         channel.send(ChannelEvent.Read(WebSocketFrame.Ping)).catchAll(_ => ZIO.unit)
-      receiveLoop
-        .zipPar(pingLoop.forever)
-        .ensuring(ZIO.unit)
+      // end the session when the receive loop ends (client disconnect),
+      // interrupting the ping loop instead of waiting for it forever
+      receiveLoop.race(pingLoop.forever)
     }
 
   private def handleCommand(
     command: Command,
     makeTorrent: MakeTorrent,
-    send: Event => cats.effect.IO[Unit]
-  )(using dispatcher: Dispatcher[cats.effect.IO]): UIO[Unit] =
+    send: Event => UIO[Unit]
+  ): UIO[Unit] =
     command match
       case Message.RequestTorrent(infoHash, trackers) =>
         val infoHash0 = InfoHash(infoHash.bytes)
-        fromEffect(send(Message.RequestAccepted(infoHash)))
-          .catchAll(_ => ZIO.unit) *>
+        send(Message.RequestAccepted(infoHash)) *>
           handleRequestTorrent(infoHash0, trackers, makeTorrent, send).forkDaemon.unit
 
   private def handleRequestTorrent(
     infoHash: InfoHash,
     trackers: List[String],
     makeTorrent: MakeTorrent,
-    send: Event => cats.effect.IO[Unit]
-  )(using dispatcher: Dispatcher[cats.effect.IO]): UIO[Unit] =
+    send: Event => UIO[Unit]
+  ): UIO[Unit] =
     val messageInfoHash = protocol.InfoHash(infoHash.bytes)
     val outcome =
       for
@@ -81,27 +67,25 @@ object SocketSession {
         fetchingMetadata <- peerDiscovery.done
         fromPeersStream = fetchingMetadata.fromPeers
         _ <- fromPeersStream
-          .mapZIO(count =>
-            fromEffect(send(Message.TorrentPeersDiscovered(messageInfoHash, count))).catchAll(_ => ZIO.unit)
-          )
+          .mapZIO(count => send(Message.TorrentPeersDiscovered(messageInfoHash, count)))
           .runDrain
           .forkDaemon
         ready <- fetchingMetadata.done
         _ <- sendStatsLoop(infoHash, ready, send)
       yield ()
     outcome.catchAll { _ =>
-      fromEffect(send(Message.TorrentError(messageInfoHash, "Could not fetch metadata"))).catchAll(_ => ZIO.unit)
+      send(Message.TorrentError(messageInfoHash, "Could not fetch metadata"))
     }.ignore
 
   private def sendStatsLoop(
     infoHash: InfoHash,
     phase: ServerTorrent.Phase.Ready,
-    send: Event => cats.effect.IO[Unit]
-  )(using dispatcher: Dispatcher[cats.effect.IO]): UIO[Unit] =
+    send: Event => UIO[Unit]
+  ): UIO[Unit] =
     val loop =
       for
         stats <- phase.serverTorrent.stats
-        _ <- fromEffect(send(Message.TorrentStats(protocol.InfoHash(infoHash.bytes), stats.connected, stats.availability)))
+        _ <- send(Message.TorrentStats(protocol.InfoHash(infoHash.bytes), stats.connected, stats.availability))
         _ <- ZIO.sleep(ZDuration.fromScala(5.seconds))
       yield ()
     loop.forever.catchAll(_ => ZIO.unit)

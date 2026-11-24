@@ -9,6 +9,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - uses: DeterminateSystems/nix-installer-action@v16
+      - uses: DeterminateSystems/magic-nix-cache-action@v13
+      - name: Setup dev environment
+        run: nix develop . --command sh -c 'echo "$PATH" >> "$GITHUB_PATH"'
       - name: Release
         env:
           MILL_SONATYPE_USERNAME: ${{ secrets.MILL_SONATYPE_USERNAME }}
@@ -18,4 +22,4 @@ jobs:
         run: |
           export VERSION=${GITHUB_REF#*/v}
           echo Publishing $VERSION
-          ./mill mill.javalib.SonatypeCentralPublishModule/
+          mill mill.javalib.SonatypeCentralPublishModule/

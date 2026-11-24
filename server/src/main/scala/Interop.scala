@@ -1,19 +1,21 @@
 import cats.arrow.FunctionK
+import cats.effect.std.Dispatcher
 import cats.effect.syntax.all.*
 import cats.effect.unsafe.IORuntime
-import cats.effect.{IO, Resource}
-import cats.effect.std.Dispatcher
+import cats.effect.IO
+import cats.effect.Resource
 import zio.interop.fromEffect
-import zio.{RIO, Scope, ZIO}
+import zio.RIO
+import zio.Scope
+import zio.ZIO
 
 object Interop {
 
   private val ioRuntime: IORuntime = IORuntime.global
 
-  /**
-   * Allocates a cats-effect Dispatcher to run IO effects from ZIO (see [[ioToRIO]] and [[acquireCats]]).
-   * The dispatcher's threads are shut down when the scope closes.
-   */
+  /** Allocates a cats-effect Dispatcher to run IO effects from ZIO (see [[ioToRIO]] and [[acquireCats]]). The
+    * dispatcher's threads are shut down when the scope closes.
+    */
   def acquireDispatcher: ZIO[Scope, Throwable, Dispatcher[IO]] =
     ZIO
       .acquireRelease(

@@ -5,10 +5,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - uses: DeterminateSystems/nix-installer-action@v16
+      - uses: DeterminateSystems/magic-nix-cache-action@v13
+      - name: Setup dev environment
+        run: nix develop . --command sh -c 'echo "$PATH" >> "$GITHUB_PATH"'
       - name: Compile
-        run: ./mill __.compile
+        run: mill __.compile
       - name: Build distributable
-        run: ./mill server.assembly
+        run: mill server.assembly
       - name: Short revision hash
         id: rev
         run: echo "short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"

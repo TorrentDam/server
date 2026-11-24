@@ -1,26 +1,38 @@
 import cats.data.OptionT
-import cats.effect.{IO, Resource}
-import cats.effect.std.{Dispatcher, Random}
+import cats.effect.std.Dispatcher
+import cats.effect.std.Random
 import cats.effect.syntax.all.*
+import cats.effect.IO
+import cats.effect.Resource
 import cats.syntax.all.*
-import com.comcast.ip4s.{Host, SocketAddress}
+import com.comcast.ip4s.Host
+import com.comcast.ip4s.SocketAddress
 import com.github.torrentdam.bencode.encode
 import com.github.torrentdam.bencode.format.BencodeFormat
-import com.github.torrentdam.bittorrent.InfoHash
 import com.github.torrentdam.bittorrent.dht.Node
 import com.github.torrentdam.bittorrent.wire.Connection
-import com.github.torrentdam.bittorrent.{FileMapping, PeerId, TorrentFile}
-import org.legogroup.woof.{Logger, given}
+import com.github.torrentdam.bittorrent.FileMapping
+import com.github.torrentdam.bittorrent.InfoHash
+import com.github.torrentdam.bittorrent.PeerId
+import com.github.torrentdam.bittorrent.TorrentFile
+import org.legogroup.woof.given
 import org.legogroup.woof.slf4j.registerSlf4j
-import sun.misc.Signal
-import zio.http.*
-import zio.http.codec.PathCodec.{int, string}
-import zio.interop.fromEffect
-import zio.{Chunk, Scope, Task, ZIO, ZIOAppArgs, ZIOAppDefault, durationInt}
-import zio.stream.ZStream
-import zio.Duration as ZDuration
-
+import org.legogroup.woof.Logger
 import scala.concurrent.duration.*
+import sun.misc.Signal
+import zio.durationInt
+import zio.http.*
+import zio.http.codec.PathCodec.int
+import zio.http.codec.PathCodec.string
+import zio.interop.fromEffect
+import zio.stream.ZStream
+import zio.Chunk
+import zio.Duration as ZDuration
+import zio.Scope
+import zio.Task
+import zio.ZIO
+import zio.ZIOAppArgs
+import zio.ZIOAppDefault
 
 object Main extends ZIOAppDefault {
 
@@ -70,15 +82,17 @@ object Main extends ZIOAppDefault {
   def resources(
     dhtEnabled: Boolean,
     dhtBootstrapNode: Option[SocketAddress[Host]]
-  )(using Dispatcher[IO], Logger[IO]): ZIO[Scope, Throwable, (TorrentRegistry, ServerTorrent.Create, TorrentIndex, MetadataRegistry)] =
+  )(using
+    Dispatcher[IO],
+    Logger[IO]
+  ): ZIO[Scope, Throwable, (TorrentRegistry, ServerTorrent.Create, TorrentIndex, MetadataRegistry)] =
     for
       _ <- fromEffect(Random.scalaUtilRandom[IO])
       selfId <- fromEffect(PeerId.generate)
       peerDiscovery <-
         if dhtEnabled then
           Interop.acquireCats(Node(port = none, bootstrapNodeAddress = dhtBootstrapNode)).map(_.discovery)
-        else
-          ZIO.succeed(emptyPeerDiscovery)
+        else ZIO.succeed(emptyPeerDiscovery)
       metadataRegistry <- MetadataRegistry()
       createServerTorrent = new ServerTorrent.Create(
         infoHash => peerInfo => Connection.connect(selfId, peerInfo, infoHash),
@@ -93,7 +107,9 @@ object Main extends ZIOAppDefault {
     new com.github.torrentdam.bittorrent.dht.PeerDiscovery {
       def discover(infoHash: InfoHash): fs2.Stream[cats.effect.IO, com.github.torrentdam.bittorrent.PeerInfo] =
         fs2.Stream.empty
-      def findNodes(nodeId: com.github.torrentdam.bittorrent.dht.NodeId): fs2.Stream[cats.effect.IO, com.github.torrentdam.bittorrent.dht.NodeInfo] =
+      def findNodes(
+        nodeId: com.github.torrentdam.bittorrent.dht.NodeId
+      ): fs2.Stream[cats.effect.IO, com.github.torrentdam.bittorrent.dht.NodeInfo] =
         fs2.Stream.empty
     }
 
@@ -113,7 +129,8 @@ object Main extends ZIOAppDefault {
       handleSocket = SocketSession(makeTorrent, metadataRegistry, torrentIndex)
 
       handleGetTorrent = (infoHash: InfoHash) =>
-        ZIO.scoped(torrentRegistry.get(infoHash))
+        ZIO
+          .scoped(torrentRegistry.get(infoHash))
           .flatMap {
             case Some(torrent) =>
               ZIO.succeed {
@@ -126,7 +143,7 @@ object Main extends ZIOAppDefault {
                 Response(
                   status = Status.Ok,
                   headers = Headers(Header.Custom("content-disposition", s"""inline; filename="$filename.torrent"""")),
-                  body = Body.fromChunk(Chunk.fromArray(encode(bcode).toByteArray)),
+                  body = Body.fromChunk(Chunk.fromArray(encode(bcode).toByteArray))
                 )
               }
             case None =>
@@ -135,74 +152,73 @@ object Main extends ZIOAppDefault {
           .catchAll(_ => ZIO.succeed(Response.status(Status.InternalServerError)))
 
       handleGetData = (infoHash: InfoHash, fileIndex: FileIndex, rangeOpt: Option[Header.Range]) =>
-        ZIO.scoped {
-          torrentRegistry.get(infoHash).flatMap {
-            case Some(torrent) =>
-              ZIO.succeed {
-                val file = torrent.metadata.parsed.files(fileIndex)
-                val extension = file.path.lastOption.map(_.reverse.takeWhile(_ != '.').reverse)
-                val fileMapping = torrent.files
-                val mediaType =
-                  extension.flatMap(MediaType.forFileExtension).getOrElse(MediaType.application.`octet-stream`)
-                val span0 = fileMapping.value(fileIndex)
-                val rangeBounds: Option[(Long, Option[Long])] =
-                  rangeOpt.flatMap {
-                    case Header.Range.Single("bytes", first, second) => Some((first, second))
-                    case Header.Range.Prefix("bytes", first)        => Some((first, None))
-                    case _                                          => None
-                  }
-                rangeBounds match
-                  case Some((first, second)) =>
-                    val advanced = span0.advance(fileMapping.pieceLength, first)
-                    val span = second.fold(advanced)(second => advanced.take(fileMapping.pieceLength, second - first))
-                    val subRangeFirst = first
-                    val subRangeLast = second.getOrElse(file.length - 1)
-                    Response(
-                      status = Status.PartialContent,
-                      headers = Headers(
-                        Header.AcceptRanges.Bytes,
-                        Header.ContentType(mediaType),
-                        Header.Custom("content-range", s"bytes $subRangeFirst-$subRangeLast/${file.length}"),
-                      ),
-                      body = responseBody(torrent, span, file.length - subRangeFirst),
-                    )
-                  case None =>
-                    val filename = file.path.lastOption.getOrElse(s"file-$fileIndex")
-                    Response(
-                      status = Status.Ok,
-                      headers = Headers(
-                        Header.AcceptRanges.Bytes,
-                        Header.ContentType(mediaType),
-                        Header.Custom("content-disposition", s"""inline; filename="$filename""""),
-                      ),
-                      body = responseBody(torrent, span0, file.length),
-                    )
-              }
-            case None =>
-              ZIO.succeed(Response.error(Status.NotFound, "Torrent not found"))
-          }
-        }
-        .catchAll(_ => ZIO.succeed(Response.status(Status.InternalServerError)))
-    yield
-      Routes(
-        Method.GET / "" -> handler(Response.text("Success")),
-        Method.GET / "ws" -> handler(handleSocket.toResponse),
-        Method.GET / "torrent" / string("infoHash") / "metadata" -> handler {
-          (infoHash: String, _: Request) =>
-            InfoHash.fromString.lift(infoHash) match
-              case Some(infoHash) => handleGetTorrent(infoHash)
-              case None           => ZIO.succeed(Response.error(Status.NotFound, "Torrent not found"))
-        },
-        Method.GET / "torrent" / string("infoHash") / "data" / int("fileIndex") -> handler {
-          (infoHash: String, fileIndex: Int, req: Request) =>
-            val validFileIndex = Option.when(fileIndex >= 0)(fileIndex)
-            (InfoHash.fromString.lift(infoHash), validFileIndex) match
-              case (Some(infoHash), Some(fileIndex)) =>
-                handleGetData(infoHash, fileIndex, req.header(Header.Range))
-              case _ =>
+        ZIO
+          .scoped {
+            torrentRegistry.get(infoHash).flatMap {
+              case Some(torrent) =>
+                ZIO.succeed {
+                  val file = torrent.metadata.parsed.files(fileIndex)
+                  val extension = file.path.lastOption.map(_.reverse.takeWhile(_ != '.').reverse)
+                  val fileMapping = torrent.files
+                  val mediaType =
+                    extension.flatMap(MediaType.forFileExtension).getOrElse(MediaType.application.`octet-stream`)
+                  val span0 = fileMapping.value(fileIndex)
+                  val rangeBounds: Option[(Long, Option[Long])] =
+                    rangeOpt.flatMap {
+                      case Header.Range.Single("bytes", first, second) => Some((first, second))
+                      case Header.Range.Prefix("bytes", first)         => Some((first, None))
+                      case _                                           => None
+                    }
+                  rangeBounds match
+                    case Some((first, second)) =>
+                      val advanced = span0.advance(fileMapping.pieceLength, first)
+                      val span = second.fold(advanced)(second => advanced.take(fileMapping.pieceLength, second - first))
+                      val subRangeFirst = first
+                      val subRangeLast = second.getOrElse(file.length - 1)
+                      Response(
+                        status = Status.PartialContent,
+                        headers = Headers(
+                          Header.AcceptRanges.Bytes,
+                          Header.ContentType(mediaType),
+                          Header.Custom("content-range", s"bytes $subRangeFirst-$subRangeLast/${file.length}")
+                        ),
+                        body = responseBody(torrent, span, file.length - subRangeFirst)
+                      )
+                    case None =>
+                      val filename = file.path.lastOption.getOrElse(s"file-$fileIndex")
+                      Response(
+                        status = Status.Ok,
+                        headers = Headers(
+                          Header.AcceptRanges.Bytes,
+                          Header.ContentType(mediaType),
+                          Header.Custom("content-disposition", s"""inline; filename="$filename"""")
+                        ),
+                        body = responseBody(torrent, span0, file.length)
+                      )
+                }
+              case None =>
                 ZIO.succeed(Response.error(Status.NotFound, "Torrent not found"))
-        },
-      )
+            }
+          }
+          .catchAll(_ => ZIO.succeed(Response.status(Status.InternalServerError)))
+    yield Routes(
+      Method.GET / "" -> handler(Response.text("Success")),
+      Method.GET / "ws" -> handler(handleSocket.toResponse),
+      Method.GET / "torrent" / string("infoHash") / "metadata" -> handler { (infoHash: String, _: Request) =>
+        InfoHash.fromString.lift(infoHash) match
+          case Some(infoHash) => handleGetTorrent(infoHash)
+          case None           => ZIO.succeed(Response.error(Status.NotFound, "Torrent not found"))
+      },
+      Method.GET / "torrent" / string("infoHash") / "data" / int("fileIndex") -> handler {
+        (infoHash: String, fileIndex: Int, req: Request) =>
+          val validFileIndex = Option.when(fileIndex >= 0)(fileIndex)
+          (InfoHash.fromString.lift(infoHash), validFileIndex) match
+            case (Some(infoHash), Some(fileIndex)) =>
+              handleGetData(infoHash, fileIndex, req.header(Header.Range))
+            case _ =>
+              ZIO.succeed(Response.error(Status.NotFound, "Torrent not found"))
+      }
+    )
 
   def responseBody(torrent: ServerTorrent, span: FileMapping.FileSpan, contentLength: Long): Body =
     val parallelPieces =

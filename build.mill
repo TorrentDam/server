@@ -64,7 +64,7 @@ trait CommonSettings extends ScalaModule, PublishModule {
 
 object Deps {
   object Versions {
-    val bittorrent = "3.9.0"
+    val bittorrent = "3.9.2"
     val `cats-effect` = "3.7.1"
     val fs2 = "3.16.0"
     val `scodec-bits` = "1.2.4"
